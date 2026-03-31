@@ -39,6 +39,8 @@ find_package(std_msgs REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+
+
 add_executable(low_level_ctrl src/low_level_ctrl.cpp src/common/motor_crc.cpp)
 add_executable(low_level_ctrl_hg src/h1-2/lowlevel/low_level_ctrl_hg.cpp src/common/motor_crc_hg.cpp)
 add_executable(g1_low_level_example src/g1/lowlevel/g1_low_level_example.cpp src/common/motor_crc_hg.cpp)
@@ -49,6 +51,9 @@ add_executable(read_wireless_controller src/read_wireless_controller.cpp)
 #add_executable(record_bag src/record_bag.cpp)
 add_executable(go2_sport_client src/go2/go2_sport_client.cpp src/common/ros2_sport_client.cpp)
 target_compile_features(go2_sport_client PRIVATE cxx_std_20)
+
+add_executable(go2_move_client src/go2/go2_move_client.cpp src/common/ros2_sport_client.cpp)
+target_compile_features(go2_move_client PRIVATE cxx_std_20)
 
 add_executable(go2_stand_example src/go2/go2_stand_example.cpp src/common/motor_crc.cpp)
 target_compile_features(go2_stand_example PRIVATE cxx_std_20)
@@ -97,7 +102,7 @@ ament_target_dependencies(read_wireless_controller ${DEPENDENCY_LIST})
 #ament_target_dependencies(record_bag ${DEPENDENCY_LIST})
 ament_target_dependencies(go2_sport_client ${DEPENDENCY_LIST})
 ament_target_dependencies(go2_stand_example ${DEPENDENCY_LIST})
-
+ament_target_dependencies(go2_move_client ${DEPENDENCY_LIST})
 
 ament_target_dependencies(go2_robot_state_client ${DEPENDENCY_LIST})
 ament_target_dependencies(g1_arm_sdk_dds_example ${DEPENDENCY_LIST})
@@ -137,7 +142,9 @@ install(TARGETS
         read_wireless_controller
         go2_sport_client
         go2_stand_example
-        DESTINATION)
+        go2_move_client
+        DESTINATION
+        )
 
 
 install(TARGETS go2_robot_state_client)
