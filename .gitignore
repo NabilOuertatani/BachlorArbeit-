@@ -4,3 +4,26 @@
 **/log/
 **/install/
 .cache
+# ROS
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+build/
+install/
+log/
+
+# Unity
+unity/**/[Ll]ibrary/
+unity/**/[Tt]emp/
+unity/**/[Oo]bj/
+unity/**/[Bb]uild/
+unity/**/[Bb]uilds/
+unity/**/[Ll]ogs/
+unity/**/UserSettings/
+
+# General
+.vscode/
+.DS_Store
+__pycache__/
+*.pyc
+
