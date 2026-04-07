@@ -1,0 +1,10 @@
+# Goal Navigation Node Configuration
+
+This file contains configuration parameters for the goal_navigation_node that handles navigation to Unity-clicked points.
+
+goal_navigation_params:
+  max_speed: 0.5  # Maximum forward speed in m/s
+  max_rotation_speed: 1.0  # Maximum rotation speed in rad/s
+  goal_tolerance: 0.1  # Distance tolerance to consider goal reached (meters)
+  use_zig_zag: true  # Enable zig-zag navigation pattern
+  zig_zag_width: 0.3  # Width of zig-zag pattern (meters)
