@@ -23,9 +23,10 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [
-            'go2_move_bridge = go2_robot_interface.go2_move_bridge:main',
-            'cmd_vel_bridge = go2_robot_interface.cmd_vel_bridge:main',
-        ],
-    },
+    'console_scripts': [
+        'cmd_vel_bridge = go2_robot_interface.cmd_vel_bridge:main',
+        'go2_move_bridge = go2_robot_interface.go2_move_bridge:main',
+        'robot_odom_bridge = go2_robot_interface.robot_odom_bridge:main',
+    ],
+},
 )
