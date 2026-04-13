@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 public class StopButtonHandler : MonoBehaviour
 {
-    public ClickToGoal clickToGoal;  // Reference to ClickToGoal script
+    public DogNavigator dogNavigator;
     private Button stopButton;
 
     void Start()
@@ -15,9 +15,9 @@ public class StopButtonHandler : MonoBehaviour
 
     void OnStopPressed()
     {
-        if (clickToGoal != null)
+        if (dogNavigator != null)
         {
-            clickToGoal.StopMovement();
+            dogNavigator.StopMovement();
             Debug.Log("Stop button pressed!");
         }
     }
