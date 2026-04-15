@@ -410,7 +410,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 89e1bb195026a1fa1bd53bff669b527c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::StopButtonHandler
-  clickToGoal: {fileID: 0}
+  dogNavigator: {fileID: 0}
 --- !u!1 &375271710
 GameObject:
   m_ObjectHideFlags: 0
@@ -1410,6 +1410,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: aa0f347d3eb5843ac86528262c6d62b6, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1855179643}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: aa0f347d3eb5843ac86528262c6d62b6, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1855179645}
   m_SourcePrefab: {fileID: 100100000, guid: aa0f347d3eb5843ac86528262c6d62b6, type: 3}
 --- !u!1 &1772595466
 GameObject:
@@ -1592,20 +1595,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0705d84a96e5540a28cdc05b0610b060, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ClickToGoal
-  cube: {fileID: 1855179644}
-  moveSpeed: 2
-  rotationSpeed: 180
-  stopDistance: 0.05
-  fixedXRotation: -90
-  fixedZRotation: 0
-  obstacleDistance: 0.7
-  sideObstacleDistance: 0.5
-  obstacleRadius: 0.25
-  avoidRotationSpeed: 250
-  obstacleLayer:
-    serializedVersion: 2
-    m_Bits: 0
-  minDistanceToWall: 0.3
 --- !u!1 &1816736500
 GameObject:
   m_ObjectHideFlags: 0
@@ -1782,6 +1771,23 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: aa0f347d3eb5843ac86528262c6d62b6, type: 3}
   m_PrefabInstance: {fileID: 1287021998}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &1855179645
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1855179641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dbf86f3786c7942c39de0a74ebd70412, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DogNavigator
+  dogTransform: {fileID: 1855179644}
+  moveSpeed: 20
+  stoppingDistance: 1
+  fixedXRotation: -90
+  fixedZRotation: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
