@@ -5,6 +5,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point, Twist
+from nav_msgs.msg import Odometry
 
 
 class ClickGoalNode(Node):
@@ -32,9 +33,9 @@ class ClickGoalNode(Node):
         self.current_x = 0.0
         self.current_y = 0.0
 
-        self.max_linear_speed = 0.1
-        self.max_angular_speed = 0.3
-        self.goal_tolerance = 0.15
+        self.max_linear_speed = 0.5      # Match launch config max_speed
+        self.max_angular_speed = 1.0     # Match launch config max_rotation_speed
+        self.goal_tolerance = 0.1        # Tighter tolerance for better precision
 
         self.get_logger().info('Click Goal Node started')
 
@@ -66,13 +67,19 @@ class ClickGoalNode(Node):
 
         angle = math.atan2(dy, dx)
 
-        linear_speed = min(self.max_linear_speed, 0.1 * distance)
-        angular_speed = max(-self.max_angular_speed, min(self.max_angular_speed, 0.3 * angle))
+        linear_speed = min(self.max_linear_speed, 0.5 * distance)   # Was 0.1 * distance
+        angular_speed = max(-self.max_angular_speed, min(self.max_angular_speed, 1.0 * angle))  # Was 0.3 * angle
 
         cmd.linear.x = linear_speed
         cmd.angular.z = angular_speed
 
         self.cmd_pub.publish(cmd)
+
+    def odom_callback(self, msg: Odometry):
+        """Update current robot position from odometry"""
+        self.current_x = msg.pose.pose.position.x
+        self.current_y = msg.pose.pose.position.y
+        self.get_logger().debug(f'Robot position: ({self.current_x:.2f}, {self.current_y:.2f})')
 
 
 def main(args=None):

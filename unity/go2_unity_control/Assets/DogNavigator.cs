@@ -13,7 +13,7 @@ public class DogNavigator : MonoBehaviour
     public Transform dogTransform;
 
     [Header("Movement")]
-    public float moveSpeed = 5.0f;
+    public float moveSpeed = 0.5f;
     public float stoppingDistance = 0.5f;
 
     [Header("Model Orientation")]
@@ -102,6 +102,7 @@ public class DogNavigator : MonoBehaviour
                     agent.SetDestination(targetPosition);
                     hasTarget = true;
                     Debug.Log("Moving to: " + targetPosition);
+                    PublishDogPosition();  // Publish new target
                 }
                 else
                 {
@@ -123,6 +124,23 @@ public class DogNavigator : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Space))
         {
             StopMovement();
+        }
+    }
+
+    private void PublishDogPosition()
+    {
+        if (ros == null || dogTransform == null) return;
+        
+        Vector3 pos = dogTransform.position;
+        PointMsg msg = new PointMsg(pos.x, pos.y, pos.z);
+        
+        try
+        {
+            ros.Publish("/unity_dog_position", msg);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Failed to publish dog position: " + e.Message);
         }
     }
 
