@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""
-TCP Bridge Server for Unity ROS-TCP-Connector
-Listens on port 10000 and bridges ROS messages between TCP and ROS2
-"""
-
 import socket
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import Point
 import threading
 import struct
 import json
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Point
 
 
 class TCPBridgeServer(Node):
@@ -21,132 +16,113 @@ class TCPBridgeServer(Node):
 
         self.host = '0.0.0.0'
         self.port = 10000
-        self.server_socket = None
+        self._server_sock = None
 
-        self.get_logger().info(
-            f'TCP Bridge Server initialized, listening on {self.host}:{self.port}'
-        )
+        # Thread-safe publish via a ROS2 timer that drains a queue
+        self._point_queue = []
+        self._queue_lock = threading.Lock()
+        self.create_timer(0.02, self._drain_queue)  # 50 Hz
 
     def start_server(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(5)
+        self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server_sock.bind((self.host, self.port))
+        self._server_sock.listen(5)
+        self.get_logger().info(f'TCP Bridge listening on {self.host}:{self.port}')
 
-        self.get_logger().info(f'TCP Server listening on {self.host}:{self.port}')
+        t = threading.Thread(target=self._accept_loop, daemon=True)
+        t.start()
 
-        server_thread = threading.Thread(target=self.accept_connections, daemon=True)
-        server_thread.start()
+    # ── ROS-thread publisher (safe) ────────────────────────────────
 
-    def accept_connections(self):
+    def _drain_queue(self):
+        with self._queue_lock:
+            items = list(self._point_queue)
+            self._point_queue.clear()
+        for point in items:
+            self.publisher.publish(point)
+
+    def _enqueue_point(self, x, y, z):
+        point = Point()
+        point.x, point.y, point.z = x, y, z
+        with self._queue_lock:
+            self._point_queue.append(point)
+
+    # ── Networking (background threads) ───────────────────────────
+
+    def _accept_loop(self):
         while rclpy.ok():
             try:
-                client_socket, client_address = self.server_socket.accept()
-                self.get_logger().info(f'Client connected from {client_address}')
-
-                client_thread = threading.Thread(
-                    target=self.handle_client,
-                    args=(client_socket, client_address),
+                conn, addr = self._server_sock.accept()
+                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                self.get_logger().info(f'Unity connected from {addr}')
+                t = threading.Thread(
+                    target=self._client_loop,
+                    args=(conn, addr),
                     daemon=True
                 )
-                client_thread.start()
+                t.start()
             except Exception as e:
-                self.get_logger().error(f'Error accepting connection: {e}')
+                if rclpy.ok():
+                    self.get_logger().error(f'Accept error: {e}')
 
-    def recv_exact(self, client_socket, size: int) -> bytes | None:
-        data = b''
-        while len(data) < size:
-            chunk = client_socket.recv(size - len(data))
+    def _recv_exact(self, conn, n):
+        buf = b''
+        while len(buf) < n:
+            chunk = conn.recv(n - len(buf))
             if not chunk:
                 return None
-            data += chunk
-        return data
+            buf += chunk
+        return buf
 
-    def handle_client(self, client_socket, client_address):
+    def _client_loop(self, conn, addr):
         try:
             while rclpy.ok():
-                # Read 4-byte little-endian payload length
-                length_bytes = self.recv_exact(client_socket, 4)
-                if not length_bytes:
-                    self.get_logger().info(f'Client {client_address} disconnected')
+                # 4-byte little-endian length prefix (matches Unity BitConverter)
+                header = self._recv_exact(conn, 4)
+                if not header:
+                    break
+                msg_len = struct.unpack('<I', header)[0]
+
+                if msg_len == 0 or msg_len > 65535:
+                    self.get_logger().warn(f'Suspicious msg_len={msg_len}, dropping')
                     break
 
-                msg_len = struct.unpack('<I', length_bytes)[0]
-
-                payload = self.recv_exact(client_socket, msg_len)
-                if payload is None:
-                    self.get_logger().info(f'Client {client_address} disconnected')
+                payload = self._recv_exact(conn, msg_len)
+                if not payload:
                     break
 
-                self.parse_message(payload)
+                self._parse_json(payload)
 
         except Exception as e:
-            self.get_logger().error(f'Error handling client {client_address}: {e}')
+            self.get_logger().error(f'Client {addr} error: {e}')
         finally:
-            client_socket.close()
+            conn.close()
+            self.get_logger().info(f'Unity {addr} disconnected')
 
-    def parse_message(self, payload: bytes):
+    def _parse_json(self, payload: bytes):
         try:
-            # Try JSON first
-            try:
-                json_str = payload.decode('utf-8', errors='ignore').strip()
-                if '{' in json_str and '}' in json_str:
-                    json_start = json_str.find('{')
-                    json_end = json_str.rfind('}') + 1
-                    if json_start >= 0 and json_end > json_start:
-                        json_data = json.loads(json_str[json_start:json_end])
-
-                        if 'x' in json_data and 'y' in json_data and 'z' in json_data:
-                            point = Point()
-                            point.x = float(json_data['x'])
-                            point.y = float(json_data['y'])
-                            point.z = float(json_data['z'])
-                            self.publisher.publish(point)
-                            self.get_logger().info(
-                                f'Published JSON point: x={point.x:.3f}, y={point.y:.3f}, z={point.z:.3f}'
-                            )
-                            return
-            except Exception:
-                pass
-
-            # geometry_msgs/Point = 3 float64 values = 24 bytes
-            if len(payload) >= 24:
-                try:
-                    x, y, z = struct.unpack('<ddd', payload[:24])
-
-                    if abs(x) < 1000 and abs(y) < 1000 and abs(z) < 1000:
-                        point = Point()
-                        point.x = x
-                        point.y = y
-                        point.z = z
-                        self.publisher.publish(point)
-                        self.get_logger().info(
-                            f'Published binary point: x={x:.3f}, y={y:.3f}, z={z:.3f}'
-                        )
-                        return
-                except Exception:
-                    pass
-
-            self.get_logger().warning(
-                f'Could not parse payload, len={len(payload)} bytes'
-            )
-
+            data = json.loads(payload.decode('utf-8'))
+            x = float(data['x'])
+            y = float(data['y'])
+            z = float(data.get('z', 0.0))
+            self._enqueue_point(x, y, z)
+            self.get_logger().info(f'Goal queued: ({x:.3f}, {y:.3f})')
         except Exception as e:
-            self.get_logger().warning(f'Error parsing message: {e}')
+            self.get_logger().warn(f'JSON parse error: {e} | raw: {payload[:80]}')
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = TCPBridgeServer()
     node.start_server()
-
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        if node.server_socket:
-            node.server_socket.close()
+        if node._server_sock:
+            node._server_sock.close()
         node.destroy_node()
         rclpy.shutdown()
 

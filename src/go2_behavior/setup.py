@@ -32,10 +32,12 @@ setup(
         'test': ['pytest'],
     },
     entry_points={
-        'console_scripts': [
-            'behavior_node = go2_behavior.behavior_node:main',
-            'goal_navigation_node = go2_behavior.goal_navigation_node:main',
-            'click_goal_node = go2_behavior.click_goal_node:main',
-        ],
-    },
+    'console_scripts': [
+        'tcp_bridge_server     = your_package.tcp_bridge_server:main',
+        'goal_navigation_node  = your_package.goal_navigation_node:main',
+        'cmd_vel_bridge        = your_package.cmd_vel_bridge:main',
+        'pose_forwarder        = your_package.pose_forwarder:main',   # add
+        'cloud_forwarder       = your_package.cloud_forwarder:main',  # add
+    ],
+},
 )
