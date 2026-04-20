@@ -54,15 +54,3 @@ MonoBehaviour:
   m_TFTopics:
   - /tf
   listenForTFMessages: 1
-
-using Unity.Robotics.ROSTCPConnector;
-using UnityEngine;
-
-public class SetupROS : MonoBehaviour
-{
-    void Awake()
-    {
-        ROSConnection ros = ROSConnection.GetOrCreateInstance();
-        Debug.Log("[ROS] Connection ready at " + ros.m_RosIPAddress + ":" + ros.m_RosPort);
-    }
-}

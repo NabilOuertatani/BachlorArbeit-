@@ -1,40 +1,23 @@
+using System.Net.Sockets;
+using System.Text;
 using UnityEngine;
-using Unity.Robotics.ROSTCPConnector;
-using RosMessageTypes.Geometry;
 
 public class UnityClickToRosGoal : MonoBehaviour
 {
-    [Header("ROS")]
-    public string topicName = "/unity_clicked_point";
+    [Header("TCP Bridge")]
+    public string serverIP = "127.0.0.1";
+    public int serverPort = 10000;
 
-    [Header("Scene References")]
+    [Header("Scene")]
     public Camera sceneCamera;
     public Transform goalMarker;
-
-    private ROSConnection ros;
-    private static bool publisherRegistered = false;
 
     void Start()
     {
         if (sceneCamera == null)
             sceneCamera = Camera.main;
 
-        if (sceneCamera == null)
-        {
-            Debug.LogError("UnityClickToRosGoal: No camera assigned and no Main Camera found.");
-            enabled = false;
-            return;
-        }
-
-        ros = ROSConnection.GetOrCreateInstance();
-
-        if (!publisherRegistered)
-        {
-            ros.RegisterPublisher<PointMsg>(topicName);
-            publisherRegistered = true;
-        }
-
-        Debug.Log("UnityClickToRosGoal ready.");
+        Debug.Log("UnityClickToRosGoal ready");
     }
 
     void Update()
@@ -47,6 +30,12 @@ public class UnityClickToRosGoal : MonoBehaviour
 
     private void PublishClickedPoint()
     {
+        if (sceneCamera == null)
+        {
+            Debug.LogError("No camera assigned");
+            return;
+        }
+
         Ray ray = sceneCamera.ScreenPointToRay(Input.mousePosition);
 
         if (!Physics.Raycast(ray, out RaycastHit hit))
@@ -57,20 +46,31 @@ public class UnityClickToRosGoal : MonoBehaviour
         if (goalMarker != null)
             goalMarker.position = unityPoint;
 
-        // Temporary Unity -> ROS conversion
-        // Unity: x right, y up, z forward
-        // ROS map/FLU-style point: x forward, y left, z up
-        // So we send: ROS = (z, -x, y)
+        // Unity -> ROS-style coordinates
         Vector3 rosPoint = new Vector3(
             unityPoint.z,
             -unityPoint.x,
             unityPoint.y
         );
 
-        PointMsg msg = new PointMsg(rosPoint.x, rosPoint.y, rosPoint.z);
-        ros.Publish(topicName, msg);
+        string json = $"{{\"x\":{rosPoint.x},\"y\":{rosPoint.y},\"z\":{rosPoint.z}}}";
+        byte[] payload = Encoding.UTF8.GetBytes(json);
+        byte[] lengthPrefix = System.BitConverter.GetBytes(payload.Length);
 
-        Debug.Log($"Unity click world point: {unityPoint}");
-        Debug.Log($"Published ROS point: ({rosPoint.x:F3}, {rosPoint.y:F3}, {rosPoint.z:F3})");
+        try
+        {
+            using (TcpClient client = new TcpClient(serverIP, serverPort))
+            using (NetworkStream stream = client.GetStream())
+            {
+                stream.Write(lengthPrefix, 0, lengthPrefix.Length);
+                stream.Write(payload, 0, payload.Length);
+            }
+
+            Debug.Log($"Published ROS point: ({rosPoint.x:F3}, {rosPoint.y:F3}, {rosPoint.z:F3})");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("TCP send failed: " + e.Message);
+        }
     }
 }
