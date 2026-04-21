@@ -1673,6 +1673,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1809050137}
   - component: {fileID: 1809050138}
+  - component: {fileID: 1809050139}
   m_Layer: 0
   m_Name: ClickHandler
   m_TagString: Untagged
@@ -1707,9 +1708,32 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9fd80a626a40b42e79dd017186f2e42d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UnityClickToRosGoal
-  topicName: /unity_clicked_point
+  serverIP: 127.0.0.1
+  serverPort: 10000
+  reconnectDelay: 2
+  rosX: 2
+  rosY: 3
   sceneCamera: {fileID: 1008246903}
   goalMarker: {fileID: 1239342277}
+--- !u!114 &1809050139
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1809050135}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e4f72c0541ee64f0c94d4df048c50f49, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RobotSync
+  posePort: 10001
+  cloudPort: 10002
+  robotMarker: {fileID: 1855179644}
+  obstacleParent: {fileID: 0}
+  obstaclePrefab: {fileID: 0}
+  maxObstacles: 300
+  obstacleHeight: 0.05
 --- !u!1 &1816736500
 GameObject:
   m_ObjectHideFlags: 0
