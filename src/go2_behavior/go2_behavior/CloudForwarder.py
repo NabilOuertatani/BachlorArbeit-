@@ -33,8 +33,8 @@ class CloudForwarder(Node):
         self.declare_parameter('unity_ip',    '127.0.0.1')
         self.declare_parameter('unity_port',  10002)
         self.declare_parameter('max_range',   5.0)    # metres
-        self.declare_parameter('min_height', -0.05)   # metres — ignore floor
-        self.declare_parameter('max_height',  1.50)   # metres — ignore ceiling
+        self.declare_parameter('min_height', -2.0)
+        self.declare_parameter('max_height',  2.0)  # metres — ignore ceiling
         self.declare_parameter('grid_size',   0.10)   # metres — voxel resolution
         self.declare_parameter('max_points',  300)    # max points per UDP packet
 

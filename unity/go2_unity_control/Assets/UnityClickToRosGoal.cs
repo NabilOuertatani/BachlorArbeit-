@@ -78,7 +78,7 @@ public class UnityClickToRosGoal : MonoBehaviour
         float ry = MapAxis(u, rosY);
         float rz = 0f; // ground plane navigation
 
-        string json = $"{{\"x\":{rx:F4},\"y\":{ry:F4},\"z\":{rz:F4}}}";
+        string json = $"{{\"x\":{rx:F4},\"y\":{ry:F4},\"z\":{rz}}}";
         byte[] payload = Encoding.UTF8.GetBytes(json);
 
         // Big-endian length prefix (4 bytes)
