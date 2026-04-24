@@ -334,6 +334,7 @@ MonoBehaviour:
   serverIP: 127.0.0.1
   serverPort: 10000
   reachedPort: 10004
+  unityToMetersScale: 0.1
   pendingColor: {r: 1, g: 0.8, b: 0, a: 1}
   activeColor: {r: 0, g: 1, b: 0.4, a: 1}
   doneColor: {r: 0.4, g: 0.4, b: 0.4, a: 1}
@@ -1566,7 +1567,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 82.9
+  field of view: 54
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -1592,13 +1593,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1008246900}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.38268343, y: 0, z: 0, w: 0.92387956}
-  m_LocalPosition: {x: -10, y: 12, z: -8}
+  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: -10, y: 50, z: 10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 45, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
 --- !u!1 &1173719876
 GameObject:
   m_ObjectHideFlags: 0
