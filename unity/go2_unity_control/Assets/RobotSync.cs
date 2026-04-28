@@ -6,6 +6,10 @@ using System.Text;
 using System.Threading;
 using UnityEngine;
 
+/// <summary>
+/// Receives robot pose and LiDAR cloud from ROS2.
+/// Applies NavMesh_Ground scale (2,1,2) so Unity dog matches real world.
+/// </summary>
 public class RobotSync : MonoBehaviour
 {
     [Header("Network")]
@@ -16,6 +20,10 @@ public class RobotSync : MonoBehaviour
     public Transform  robotMarker;
     public Transform  obstacleParent;
     public GameObject obstaclePrefab;
+
+    [Header("Scale (Unity units per real meter)")]
+    public float scaleX = 2.0f;   // NavMesh_Ground scale X
+    public float scaleZ = 2.0f;   // NavMesh_Ground scale Z
 
     [Header("Obstacle visualisation")]
     public int   maxObstacles   = 300;
@@ -48,7 +56,9 @@ public class RobotSync : MonoBehaviour
         _poseThread.Start();
         _cloudThread.Start();
 
-        Debug.Log("[RobotSync] Started — pose:" + posePort + " cloud:" + cloudPort);
+        Debug.Log("[RobotSync] Started — pose:" + posePort +
+                  " cloud:" + cloudPort +
+                  " scale(" + scaleX + ", " + scaleZ + ")");
     }
 
     void Update()
@@ -66,17 +76,28 @@ public class RobotSync : MonoBehaviour
         _cloudThread?.Join(300);
     }
 
+    // ── Apply pose ─────────────────────────────────────────────────
+
     void ApplyPose()
     {
         if (robotMarker == null) return;
         lock (_poseLock)
         {
             if (!_hasPose) return;
-            robotMarker.position = new Vector3(-_pendingY, robotMarker.position.y, _pendingX);
-            robotMarker.rotation = Quaternion.Euler(-90f, -_pendingYaw * Mathf.Rad2Deg, 0f);
+            // ROS (x fwd, y left) → Unity (x right, z fwd) × scale
+            robotMarker.position = new Vector3(
+                -_pendingY * scaleX,
+                robotMarker.position.y,
+                 _pendingX * scaleZ
+            );
+            // ROS yaw CCW → Unity Y rotation CW
+            robotMarker.rotation = Quaternion.Euler(
+                0f, -_pendingYaw * Mathf.Rad2Deg, 0f);
             _hasPose = false;
         }
     }
+
+    // ── Apply cloud ────────────────────────────────────────────────
 
     void ApplyCloud()
     {
@@ -99,7 +120,15 @@ public class RobotSync : MonoBehaviour
             {
                 if (i < visible)
                 {
-                    _dots[i].transform.position = new Vector3(-pts[i].y, obstacleHeight, pts[i].x);
+                    // ROS robot frame (x fwd, y left) → Unity × scale
+                    // Cloud is relative to robot so add robot position
+                    float rx = robotMarker != null ? robotMarker.position.x : 0f;
+                    float rz = robotMarker != null ? robotMarker.position.z : 0f;
+                    _dots[i].transform.position = new Vector3(
+                        rx + (-pts[i].y * scaleX),
+                        obstacleHeight,
+                        rz + ( pts[i].x * scaleZ)
+                    );
                     _dots[i].SetActive(true);
                 }
                 else
@@ -107,10 +136,10 @@ public class RobotSync : MonoBehaviour
                     _dots[i].SetActive(false);
                 }
             }
-
-            Debug.Log("[RobotSync] Showing " + visible + " obstacle dots");
         }
     }
+
+    // ── Pose receive thread ────────────────────────────────────────
 
     void PoseLoop()
     {
@@ -126,18 +155,18 @@ public class RobotSync : MonoBehaviour
                 float yaw = ParseFloat(json, "yaw");
                 lock (_poseLock)
                 {
-                    _pendingX   = x;
-                    _pendingY   = y;
-                    _pendingYaw = yaw;
-                    _hasPose    = true;
+                    _pendingX = x; _pendingY = y; _pendingYaw = yaw;
+                    _hasPose  = true;
                 }
             }
             catch (Exception e)
             {
-                if (_running) Debug.LogWarning("[RobotSync] Pose error: " + e.Message);
+                if (_running) Debug.LogWarning("[RobotSync] Pose: " + e.Message);
             }
         }
     }
+
+    // ── Cloud receive thread ───────────────────────────────────────
 
     void CloudLoop()
     {
@@ -146,27 +175,20 @@ public class RobotSync : MonoBehaviour
         {
             try
             {
-                byte[] data = _cloudUdp.Receive(ref ep);
-                string json = Encoding.UTF8.GetString(data);
-                int previewLen = json.Length < 100 ? json.Length : 100;
-                Debug.Log("[RobotSync] Raw " + data.Length + " bytes: " + json.Substring(0, previewLen));
-                List<Vector2> pts = ParseCloud(json);
-                Debug.Log("[RobotSync] Parsed " + pts.Count + " points");
+                byte[]        data = _cloudUdp.Receive(ref ep);
+                string        json = Encoding.UTF8.GetString(data);
+                List<Vector2> pts  = ParseCloud(json);
                 if (pts.Count > 0)
-                {
-                    lock (_cloudLock)
-                    {
-                        _pendingCloud = pts;
-                        _hasCloud     = true;
-                    }
-                }
+                    lock (_cloudLock) { _pendingCloud = pts; _hasCloud = true; }
             }
             catch (Exception e)
             {
-                if (_running) Debug.LogWarning("[RobotSync] Cloud error: " + e.Message);
+                if (_running) Debug.LogWarning("[RobotSync] Cloud: " + e.Message);
             }
         }
     }
+
+    // ── JSON parsers ───────────────────────────────────────────────
 
     static List<Vector2> ParseCloud(string json)
     {
@@ -175,18 +197,16 @@ public class RobotSync : MonoBehaviour
         {
             int start = json.IndexOf("[[");
             int end   = json.LastIndexOf("]]");
-            if (start < 0 || end < 0)
-            {
-                Debug.LogWarning("[RobotSync] No [[ ]] in json");
-                return result;
-            }
+            if (start < 0 || end < 0) return result;
 
-            string inner = json.Substring(start + 1, end - start);
-            string[] pairs = inner.Split(new string[] { "],[", "], [" }, StringSplitOptions.RemoveEmptyEntries);
+            string   inner = json.Substring(start + 1, end - start);
+            string[] pairs = inner.Split(
+                new string[] { "],[", "], [" },
+                StringSplitOptions.RemoveEmptyEntries);
 
             foreach (string pair in pairs)
             {
-                string clean = pair.Replace("[", "").Replace("]", "").Trim();
+                string   clean = pair.Replace("[", "").Replace("]", "").Trim();
                 string[] parts = clean.Split(',');
                 if (parts.Length >= 2)
                 {
@@ -204,7 +224,7 @@ public class RobotSync : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogWarning("[RobotSync] ParseCloud error: " + e.Message);
+            Debug.LogWarning("[RobotSync] ParseCloud: " + e.Message);
         }
         return result;
     }

@@ -8,12 +8,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Multi-goal manager:
-///   - Disables UnityClickToRosGoal so clicks only queue waypoints
-///   - Click on floor to queue waypoints (shown as numbered spheres)
-///   - Press Walk to send them one by one to ROS
-///   - Press Clear to reset
-///   - Listens to goal_reached (UDP port 10004) to advance to next goal
+/// Multi-goal manager with correct scale (NavMesh_Ground scale 2,1,2)
+/// 1 real meter = 2 Unity units
 /// </summary>
 public class MultiGoalManager : MonoBehaviour
 {
@@ -28,16 +24,16 @@ public class MultiGoalManager : MonoBehaviour
     public Button          clearButton;
     public TextMeshProUGUI statusText;
 
-    [Header("TCP Bridge (send goals)")]
+    [Header("TCP Bridge")]
     public string serverIP   = "127.0.0.1";
     public int    serverPort = 10000;
 
     [Header("UDP (receive goal_reached)")]
     public int reachedPort = 10004;
 
-    [Header("Coordinate Scaling")]
-    [Tooltip("Scale factor: 1 Unity unit = X meters in real world. Adjust to match real dog size.")]
-    public float unityToMetersScale = 0.006f;  // 0.6m dog / 100 unity units = 0.006
+    [Header("Scale (Unity units per real meter)")]
+    public float scaleX = 2.0f;   // NavMesh_Ground scale X
+    public float scaleZ = 2.0f;   // NavMesh_Ground scale Z
 
     [Header("Waypoint visuals")]
     public Color pendingColor = new Color(1f, 0.8f, 0f);
@@ -45,9 +41,9 @@ public class MultiGoalManager : MonoBehaviour
     public Color doneColor    = new Color(0.4f, 0.4f, 0.4f);
 
     // ── Internal ───────────────────────────────────────────────────
-    private List<Vector3>    _rosGoals  = new List<Vector3>();
-    private List<Vector3>    _unityPos  = new List<Vector3>();
-    private List<GameObject> _markers   = new List<GameObject>();
+    private List<Vector3>    _rosGoals = new List<Vector3>();
+    private List<Vector3>    _unityPos = new List<Vector3>();
+    private List<GameObject> _markers  = new List<GameObject>();
 
     private int  _currentIndex = -1;
     private bool _isWalking    = false;
@@ -60,7 +56,7 @@ public class MultiGoalManager : MonoBehaviour
     private Queue<byte[]> _sendQueue = new Queue<byte[]>();
     private readonly object _qLock   = new object();
 
-    // UDP goal_reached
+    // UDP
     private System.Net.Sockets.UdpClient _udp;
     private Thread                        _udpThread;
     private bool                          _udpRunning;
@@ -71,7 +67,7 @@ public class MultiGoalManager : MonoBehaviour
 
     void Start()
     {
-        // ── Disable single-goal script so clicks don't fire immediately
+        // Disable single-goal script
         var singleGoal = FindObjectOfType<UnityClickToRosGoal>();
         if (singleGoal != null)
         {
@@ -83,32 +79,27 @@ public class MultiGoalManager : MonoBehaviour
 
         walkButton.onClick.AddListener(OnWalkPressed);
         clearButton.onClick.AddListener(OnClearPressed);
-
         walkButton.interactable  = false;
         clearButton.interactable = true;
         SetStatus("Click on floor to add waypoints");
 
-        // TCP send thread
         _tcpRunning = true;
         _sendThread = new Thread(TcpSendLoop) { IsBackground = true };
         _sendThread.Start();
 
-        // UDP goal_reached listener
         _udpRunning = true;
         _udp        = new System.Net.Sockets.UdpClient(reachedPort);
         _udpThread  = new Thread(UdpReceiveLoop) { IsBackground = true };
         _udpThread.Start();
 
-        Debug.Log("[MultiGoalManager] Ready");
+        Debug.Log("[MultiGoalManager] Ready | scale X=" + scaleX + " Z=" + scaleZ);
     }
 
     void Update()
     {
-        // Add waypoint on click — only when NOT walking
         if (!_isWalking && Input.GetMouseButtonDown(0))
             TryAddWaypoint();
 
-        // Check if current goal was reached
         bool reached = false;
         lock (_grLock) { reached = _goalReached; _goalReached = false; }
         if (reached && _isWalking)
@@ -124,7 +115,6 @@ public class MultiGoalManager : MonoBehaviour
         _tcp?.Close();
         _udp?.Close();
 
-        // Re-enable single goal script on exit
         var singleGoal = FindObjectOfType<UnityClickToRosGoal>();
         if (singleGoal != null) singleGoal.enabled = true;
     }
@@ -135,24 +125,24 @@ public class MultiGoalManager : MonoBehaviour
     {
         if (sceneCamera == null) return;
 
-        Ray ray = sceneCamera.ScreenPointToRay(Input.mousePosition);
-        if (!Physics.Raycast(ray, out RaycastHit hit)) return;
-
         // Ignore UI clicks
         if (UnityEngine.EventSystems.EventSystem.current != null &&
             UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
             return;
 
+        Ray ray = sceneCamera.ScreenPointToRay(Input.mousePosition);
+        if (!Physics.Raycast(ray, out RaycastHit hit)) return;
+
         Vector3 unityPos = hit.point;
 
-        // Unity → ROS coordinate mapping with scaling
-        float rosX = unityPos.z * unityToMetersScale;
-        float rosY = -unityPos.x * unityToMetersScale;
+        // Unity → ROS: divide by scale to get real metres
+        float rosX =  unityPos.z / scaleZ;
+        float rosY = -unityPos.x / scaleX;
 
         _rosGoals.Add(new Vector3(rosX, rosY, 0));
         _unityPos.Add(unityPos);
 
-        // Spawn numbered marker
+        // Spawn marker
         GameObject m = waypointParent != null
             ? Instantiate(waypointPrefab, waypointParent)
             : Instantiate(waypointPrefab);
@@ -171,12 +161,12 @@ public class MultiGoalManager : MonoBehaviour
         tmp.color     = Color.white;
 
         _markers.Add(m);
-
         walkButton.interactable = true;
         SetStatus(_markers.Count + " waypoint(s) — press WALK to start");
 
         Debug.Log("[MultiGoalManager] Waypoint " + _markers.Count +
-                  " added: ROS(" + rosX.ToString("F2") + ", " + rosY.ToString("F2") + ")");
+                  " Unity(" + unityPos.x.ToString("F2") + ", " + unityPos.z.ToString("F2") + ")" +
+                  " → ROS(" + rosX.ToString("F2") + ", " + rosY.ToString("F2") + ")");
     }
 
     // ── Walk ───────────────────────────────────────────────────────
@@ -184,20 +174,16 @@ public class MultiGoalManager : MonoBehaviour
     void OnWalkPressed()
     {
         if (_rosGoals.Count == 0) return;
-
         _isWalking    = true;
         _currentIndex = -1;
-
         walkButton.interactable  = false;
         clearButton.interactable = false;
-
         Debug.Log("[MultiGoalManager] Starting walk — " + _rosGoals.Count + " waypoints");
         AdvanceToNextGoal();
     }
 
     void AdvanceToNextGoal()
     {
-        // Mark previous as done
         if (_currentIndex >= 0 && _currentIndex < _markers.Count)
             SetMarkerColor(_markers[_currentIndex], doneColor);
 
@@ -212,10 +198,8 @@ public class MultiGoalManager : MonoBehaviour
             return;
         }
 
-        // Highlight active marker
         SetMarkerColor(_markers[_currentIndex], activeColor);
 
-        // Move GoalMarker in Unity
         if (goalMarker != null)
             goalMarker.position = new Vector3(
                 _unityPos[_currentIndex].x,
@@ -223,7 +207,7 @@ public class MultiGoalManager : MonoBehaviour
                 _unityPos[_currentIndex].z
             );
 
-        // Build and send goal packet
+        // Build packet — big-endian length prefix
         Vector3 g    = _rosGoals[_currentIndex];
         string  json = "{\"x\":"  + g.x.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) +
                        ",\"y\":" + g.y.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) +
@@ -233,10 +217,8 @@ public class MultiGoalManager : MonoBehaviour
         int    len     = payload.Length;
         byte[] prefix  = new byte[4]
         {
-            (byte)(len >> 24),
-            (byte)(len >> 16),
-            (byte)(len >>  8),
-            (byte)(len)
+            (byte)(len >> 24), (byte)(len >> 16),
+            (byte)(len >>  8), (byte)(len)
         };
         byte[] packet = new byte[4 + payload.Length];
         Buffer.BlockCopy(prefix,  0, packet, 0,              4);
@@ -256,10 +238,8 @@ public class MultiGoalManager : MonoBehaviour
         _currentIndex = -1;
         _rosGoals.Clear();
         _unityPos.Clear();
-
         foreach (var m in _markers) Destroy(m);
         _markers.Clear();
-
         walkButton.interactable  = false;
         clearButton.interactable = true;
         SetStatus("Cleared — click floor to add waypoints");
@@ -277,40 +257,28 @@ public class MultiGoalManager : MonoBehaviour
                 {
                     _tcp    = new TcpClient(serverIP, serverPort);
                     _stream = _tcp.GetStream();
-                    Debug.Log("[MultiGoalManager] TCP connected to " + serverIP + ":" + serverPort);
+                    Debug.Log("[MultiGoalManager] TCP connected");
                 }
-                catch
-                {
-                    Thread.Sleep(2000);
-                    continue;
-                }
+                catch { Thread.Sleep(2000); continue; }
             }
 
             byte[] packet = null;
-            lock (_qLock)
-            {
-                if (_sendQueue.Count > 0) packet = _sendQueue.Dequeue();
-            }
+            lock (_qLock) { if (_sendQueue.Count > 0) packet = _sendQueue.Dequeue(); }
 
             if (packet != null)
             {
-                try
-                {
-                    _stream.Write(packet, 0, packet.Length);
-                }
+                try { _stream.Write(packet, 0, packet.Length); }
                 catch
                 {
                     Debug.LogWarning("[MultiGoalManager] Send failed — reconnecting");
-                    _tcp?.Close();
-                    _tcp = null;
+                    _tcp?.Close(); _tcp = null;
                 }
             }
-
             Thread.Sleep(10);
         }
     }
 
-    // ── UDP goal_reached receiver ──────────────────────────────────
+    // ── UDP receive ────────────────────────────────────────────────
 
     void UdpReceiveLoop()
     {
@@ -326,8 +294,7 @@ public class MultiGoalManager : MonoBehaviour
             }
             catch (Exception e)
             {
-                if (_udpRunning)
-                    Debug.LogWarning("[MultiGoalManager] UDP error: " + e.Message);
+                if (_udpRunning) Debug.LogWarning("[MultiGoalManager] UDP: " + e.Message);
             }
         }
     }
