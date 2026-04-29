@@ -102,6 +102,10 @@ public class MultiGoalManager : MonoBehaviour
 
         bool reached = false;
         lock (_grLock) { reached = _goalReached; _goalReached = false; }
+        
+        if (reached)
+            Debug.Log("[MultiGoalManager] Goal reached detected! _isWalking=" + _isWalking);
+            
         if (reached && _isWalking)
             AdvanceToNextGoal();
     }
@@ -282,20 +286,38 @@ public class MultiGoalManager : MonoBehaviour
 
     void UdpReceiveLoop()
     {
-        var ep = new System.Net.IPEndPoint(System.Net.IPAddress.Any, reachedPort);
-        while (_udpRunning)
+        try
         {
-            try
+            var ep = new System.Net.IPEndPoint(System.Net.IPAddress.Any, reachedPort);
+            Debug.Log("[MultiGoalManager] UDP listening on port " + reachedPort);
+            
+            while (_udpRunning)
             {
-                byte[] data = _udp.Receive(ref ep);
-                string msg  = Encoding.UTF8.GetString(data).Trim();
-                if (msg.Contains("true") || msg.Contains("1"))
-                    lock (_grLock) { _goalReached = true; }
+                try
+                {
+                    byte[] data = _udp.Receive(ref ep);
+                    string msg  = Encoding.UTF8.GetString(data).Trim();
+                    Debug.Log("[MultiGoalManager] UDP received from " + ep + ": " + msg);
+                    
+                    if (msg.Contains("true") || msg.Contains("1"))
+                    {
+                        Debug.Log("[MultiGoalManager] Goal reached signal received!");
+                        lock (_grLock) { _goalReached = true; }
+                    }
+                }
+                catch (System.Net.Sockets.SocketException e)
+                {
+                    if (_udpRunning) Debug.LogWarning("[MultiGoalManager] UDP socket error: " + e.Message);
+                }
+                catch (Exception e)
+                {
+                    if (_udpRunning) Debug.LogWarning("[MultiGoalManager] UDP error: " + e.Message);
+                }
             }
-            catch (Exception e)
-            {
-                if (_udpRunning) Debug.LogWarning("[MultiGoalManager] UDP: " + e.Message);
-            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[MultiGoalManager] Failed to create UDP socket on port " + reachedPort + ": " + e.Message);
         }
     }
 

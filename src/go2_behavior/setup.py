@@ -33,6 +33,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'raise_leg = go2_behavior.raise_leg:main',
+            'raise_leg_highlevel = go2_behavior.raise_leg_highlevel:main',
             'goal_navigation_node = go2_behavior.goal_navigation_node:main',
             'pose_forwarder       = go2_behavior.PoseForwarder:main',
             'cloud_forwarder      = go2_behavior.CloudForwarder:main',

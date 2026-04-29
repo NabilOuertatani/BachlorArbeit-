@@ -26,9 +26,9 @@ class GoalNavigationNode(Node):
         # ── Parameters ─────────────────────────────────────────────
         self.declare_parameter('max_speed',          0.35)
         self.declare_parameter('turn_speed',          0.6)
-        self.declare_parameter('goal_tolerance',      0.20)
+        self.declare_parameter('goal_tolerance', 0.35)
         self.declare_parameter('heading_tolerance',   0.08)
-        self.declare_parameter('pose_timeout',        1.0)
+        self.declare_parameter('pose_timeout', 3.0)
         self.declare_parameter('unity_ip',            '127.0.0.1')
         self.declare_parameter('unity_reached_port',  10004)
 
@@ -152,7 +152,7 @@ class GoalNavigationNode(Node):
             # Also steer to maintain heading while driving
             wz = self._clamp(yaw_err * 1.5, -self.turn_speed * 0.3, self.turn_speed * 0.3)
             self._send(vx, wz)
-            self.get_logger().info(f'Driving: dist={dist:.3f}m, vx={vx:.3f}, wz={wz:.3f}, yaw_err={math.degrees(yaw_err):.1f}°')
+            self.get_logger().info(f'Driving: dist={dist:.3f}m, vx={vx:.3f}, wz={wz:.3f}, yaw_err={math.degrees(yaw_err):.1f}°', throttle_duration_sec=2.0)
 
     # ── Helpers ────────────────────────────────────────────────────
 
@@ -191,7 +191,10 @@ class GoalNavigationNode(Node):
     @staticmethod
     def _norm(a):
         return (a + math.pi) % (2 * math.pi) - math.pi
-
+    
+    @staticmethod
+    def _clamp(v, lo, hi):
+        return max(lo, min(hi, v))
 
 def main(args=None):
     rclpy.init(args=args)

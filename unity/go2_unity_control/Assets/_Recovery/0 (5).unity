@@ -2391,7 +2391,6 @@ MonoBehaviour:
   obstaclePrefab: {fileID: 5296303154272637690, guid: a3ad92dd5e3bd58738731b9ba6b955da, type: 3}
   scaleX: 2
   scaleZ: 2
-  speedMultiplier: 1
   maxObstacles: 300
   obstacleHeight: 0.05
 --- !u!1 &1816736500

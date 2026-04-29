@@ -25,6 +25,9 @@ public class RobotSync : MonoBehaviour
     public float scaleX = 2.0f;   // NavMesh_Ground scale X
     public float scaleZ = 2.0f;   // NavMesh_Ground scale Z
 
+    [Header("Movement speed")]
+    public float speedMultiplier = 1.0f;  // Increase to make dog move faster in simulation
+
     [Header("Obstacle visualisation")]
     public int   maxObstacles   = 300;
     public float obstacleHeight = 0.05f;
@@ -84,15 +87,16 @@ public class RobotSync : MonoBehaviour
         lock (_poseLock)
         {
             if (!_hasPose) return;
-            // ROS (x fwd, y left) → Unity (x right, z fwd) × scale
-            robotMarker.position = new Vector3(
-                -_pendingY * scaleX,
+            // ROS (x fwd, y left) → Unity (x right, z fwd) × scale × speedMultiplier
+            Vector3 targetPos = new Vector3(
+                -_pendingY * scaleX * speedMultiplier,
                 robotMarker.position.y,
-                 _pendingX * scaleZ
+                 _pendingX * scaleZ * speedMultiplier
             );
+            robotMarker.position = targetPos;
             // ROS yaw CCW → Unity Y rotation CW
             robotMarker.rotation = Quaternion.Euler(
-                0f, -_pendingYaw * Mathf.Rad2Deg, 0f);
+                -90f, -_pendingYaw * Mathf.Rad2Deg * speedMultiplier, 0f);
             _hasPose = false;
         }
     }
