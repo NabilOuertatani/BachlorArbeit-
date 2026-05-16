@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
@@ -18,10 +19,12 @@ public class MultiGoalManager : MonoBehaviour
     public Transform     goalMarker;
     public GameObject    waypointPrefab;
     public Transform     waypointParent;
+    public Canvas        mainUICanvas;
 
     [Header("UI")]
     public Button          walkButton;
     public Button          clearButton;
+    public Button          addWaypointsButton;
     public TextMeshProUGUI statusText;
 
     [Header("TCP Bridge")]
@@ -67,18 +70,17 @@ public class MultiGoalManager : MonoBehaviour
 
     void Start()
     {
-        // Disable single-goal script
-        var singleGoal = FindObjectOfType<UnityClickToRosGoal>();
-        if (singleGoal != null)
-        {
-            singleGoal.enabled = false;
-            Debug.Log("[MultiGoalManager] Disabled UnityClickToRosGoal");
-        }
-
         if (sceneCamera == null) sceneCamera = Camera.main;
 
         walkButton.onClick.AddListener(OnWalkPressed);
         clearButton.onClick.AddListener(OnClearPressed);
+        
+        // Add Waypoints button - save to GestureSequenceUI
+        if (addWaypointsButton != null)
+        {
+            addWaypointsButton.onClick.AddListener(OnAddWaypointsPressed);
+        }
+
         walkButton.interactable  = false;
         clearButton.interactable = true;
         SetStatus("Click on floor to add waypoints");
@@ -118,9 +120,6 @@ public class MultiGoalManager : MonoBehaviour
         _udpThread?.Join(300);
         _tcp?.Close();
         _udp?.Close();
-
-        var singleGoal = FindObjectOfType<UnityClickToRosGoal>();
-        if (singleGoal != null) singleGoal.enabled = true;
     }
 
     // ── Waypoint collection ────────────────────────────────────────
@@ -249,6 +248,21 @@ public class MultiGoalManager : MonoBehaviour
         SetStatus("Cleared — click floor to add waypoints");
     }
 
+    void OnAddWaypointsPressed()
+    {
+        Debug.Log("[MultiGoalManager] Add Waypoints button pressed!");
+        
+        GestureSequenceUI gestureUI = FindObjectOfType<GestureSequenceUI>();
+        if (gestureUI == null)
+        {
+            Debug.LogError("[MultiGoalManager] GestureSequenceUI not found!");
+            return;
+        }
+
+        gestureUI.AddWaypoints();
+        Debug.Log("[MultiGoalManager] Called GestureSequenceUI.AddWaypoints()");
+    }
+
     // ── TCP send loop ──────────────────────────────────────────────
 
     void TcpSendLoop()
@@ -332,5 +346,28 @@ public class MultiGoalManager : MonoBehaviour
     {
         var r = m.GetComponent<Renderer>();
         if (r != null) r.material.color = c;
+    }
+
+    // ── Public API for GestureSequenceUI ───────────────────────────
+
+    /// <summary>Get list of waypoints added to current gesture step</summary>
+    public List<Vector3> GetCurrentWaypoints()
+    {
+        return new List<Vector3>(_unityPos);
+    }
+
+    /// <summary>Clear waypoints after saving to gesture</summary>
+    public void ClearWaypoints()
+    {
+        _rosGoals.Clear();
+        _unityPos.Clear();
+        
+        foreach (GameObject m in _markers)
+            Destroy(m);
+        _markers.Clear();
+
+        walkButton.interactable = false;
+        SetStatus("Waypoints cleared. Click on floor to add new ones.");
+        Debug.Log("[MultiGoalManager] Cleared all waypoints");
     }
 }
