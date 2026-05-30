@@ -5,21 +5,7 @@ The Goal Navigation System connects Unity interface to the Go2 robot movement sy
 
 ## System Architecture
 
-```
-Unity (ClickToGoal.cs)
-    ↓ publishes to
-/unity_clicked_point (geometry_msgs/Point)
-    ↓ subscribes to
-goal_navigation_node (NEW)
-    ↓ publishes to
-/cmd_vel (geometry_msgs/Twist)
-    ↓ subscribes to
-cmd_vel_bridge.py
-    ↓ converts to
-Unitree Robot API
-    ↓
-Robot Executes Movement
-```
+![alt text](image-1.png)
 
 ## Running the System
 

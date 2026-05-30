@@ -9,8 +9,16 @@ using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
-/// Multi-goal manager with correct scale (NavMesh_Ground scale 2,1,2)
-/// 1 real meter = 2 Unity units
+/// Manages waypoint collection and delivery to the Go2 via ROS.
+///
+/// Coordinate scale: 1 real metre = 2 Unity units (NavMesh_Ground scale 2,1,2).
+///
+/// Threads:
+///   Main — raycasting, marker visuals, UI
+///   TCP  — sends Point goals to /unity_clicked_point (port 10000)
+///   UDP  — receives goal-reached signals from robot (port 10004)
+///
+/// Used by GestureSequenceUI for programmatic waypoint loading.
 /// </summary>
 public class MultiGoalManager : MonoBehaviour
 {
@@ -369,5 +377,82 @@ public class MultiGoalManager : MonoBehaviour
         walkButton.interactable = false;
         SetStatus("Waypoints cleared. Click on floor to add new ones.");
         Debug.Log("[MultiGoalManager] Cleared all waypoints");
+    }
+
+    /// <summary>Load waypoints from gesture step (Unity coordinates)</summary>
+    public void LoadWaypoints(List<Vector3> unityWaypoints)
+    {
+        ClearWaypoints();
+        
+        foreach (Vector3 unityPos in unityWaypoints)
+        {
+            // Unity → ROS: divide by scale
+            float rosX = unityPos.z / scaleZ;
+            float rosY = -unityPos.x / scaleX;
+            
+            _rosGoals.Add(new Vector3(rosX, rosY, 0));
+            _unityPos.Add(unityPos);
+            
+            // Spawn marker
+            GameObject m = waypointParent != null
+                ? Instantiate(waypointPrefab, waypointParent)
+                : Instantiate(waypointPrefab);
+            
+            m.transform.position = new Vector3(unityPos.x, 0.15f, unityPos.z);
+            SetMarkerColor(m, pendingColor);
+            
+            _markers.Add(m);
+        }
+        
+        walkButton.interactable = _rosGoals.Count > 0;
+        SetStatus(_markers.Count + " waypoint(s) loaded");
+        Debug.Log("[MultiGoalManager] Loaded " + _rosGoals.Count + " waypoints");
+    }
+
+    /// <summary>Start navigation through loaded waypoints</summary>
+    public void StartNavigation()
+    {
+        if (_rosGoals.Count == 0)
+        {
+            Debug.LogWarning("[MultiGoalManager] No waypoints loaded!");
+            return;
+        }
+        
+        _isWalking = true;
+        _currentIndex = -1;
+        walkButton.interactable = false;
+        clearButton.interactable = false;
+        Debug.Log("[MultiGoalManager] Starting navigation — " + _rosGoals.Count + " waypoints");
+        AdvanceToNextGoal();
+    }
+
+    /// <summary>Check if navigation is complete</summary>
+    public bool IsNavigationComplete()
+    {
+        return !_isWalking;
+    }
+
+    /// <summary>Add a single waypoint (Unity coordinates)</summary>
+    public void AddWaypoint(Vector3 unityPos)
+    {
+        // Unity → ROS: divide by scale
+        float rosX = unityPos.z / scaleZ;
+        float rosY = -unityPos.x / scaleX;
+        
+        _rosGoals.Add(new Vector3(rosX, rosY, 0));
+        _unityPos.Add(unityPos);
+        
+        // Spawn marker
+        GameObject m = waypointParent != null
+            ? Instantiate(waypointPrefab, waypointParent)
+            : Instantiate(waypointPrefab);
+        
+        m.transform.position = new Vector3(unityPos.x, 0.15f, unityPos.z);
+        SetMarkerColor(m, pendingColor);
+        
+        _markers.Add(m);
+        walkButton.interactable = true;
+        SetStatus(_markers.Count + " waypoint(s)");
+        Debug.Log("[MultiGoalManager] Added waypoint " + _markers.Count);
     }
 }

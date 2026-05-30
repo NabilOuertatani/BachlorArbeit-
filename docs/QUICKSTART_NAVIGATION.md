@@ -1,7 +1,7 @@
 # Quick Start: Unity Click-to-Goal Navigation
 
 ## What's New
-✨ A new ROS2 node (`goal_navigation_node.py`) that connects Unity clicks to robot movement!
+ A new ROS2 node (`goal_navigation_node.py`) that connects Unity clicks to robot movement!
 
 ## The Flow
 ```
@@ -107,10 +107,10 @@ ros2 run go2_behavior goal_navigation_node \
 
 ## Next Steps
 
-- ✅ Test with virtual dog in Unity
-- 🔜 Connect to real Go2 robot
-- 🔜 Add obstacle avoidance
-- 🔜 Implement zig-zag pattern
+- [x] Test with virtual dog in Unity
+- [FUTURE] Connect to real Go2 robot
+- [FUTURE] Add obstacle avoidance
+- [FUTURE] Implement zig-zag pattern
 
 ## Documentation
 For detailed info, see: [GOAL_NAVIGATION_GUIDE.md](GOAL_NAVIGATION_GUIDE.md)

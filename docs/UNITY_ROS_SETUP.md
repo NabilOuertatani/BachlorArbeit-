@@ -11,7 +11,7 @@ Robot doesn't follow where you click in Unity. The reason: **ROSConnectionPrefab
 3. Check the Console window - you should see:
    ```
    [ROS] ROSConnection instance ready
-   [ROS] ✓ Connected to ROS at: 127.0.0.1:10000
+   [ROS] Connected to ROS at: 127.0.0.1:10000
    ```
 
 ### Option 2: Manual Setup
@@ -21,7 +21,7 @@ Robot doesn't follow where you click in Unity. The reason: **ROSConnectionPrefab
 4. Verify the settings in the Inspector:
    - **IP Address:** 127.0.0.1
    - **ROS Port:** 10000
-   - **Connect On Start:** ✓ (enabled)
+   - **Connect On Start:** [enabled]
    - **Keepalive Time:** 1
 
 ## Before Testing
@@ -39,8 +39,8 @@ python3 ros_tcp_bridge_server.py
 1. Open Unity Console (Window → General → Console)
 2. Start the game (Play button)
 3. Watch Console for:
-   - **Success:** `[ROS] ✓ Connected to ROS at: 127.0.0.1:10000`
-   - **Failure:**  `[ROS] ⏳ Waiting for connection...` means bridge isn't running
+   - **Success:** `[ROS] Connected to ROS at: 127.0.0.1:10000`
+   - **Failure:** `[ROS] Waiting for connection...` means bridge isn't running
 
 4. Click on the ground plane in the game
 5. Check Console for debug messages like:

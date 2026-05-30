@@ -1,8 +1,31 @@
 #!/usr/bin/env python3
 """
-GoalNavigationNode — closed-loop, no obstacle avoidance.
-Uses /utlidar/robot_pose for real position.
-Notifies Unity via UDP when each goal is reached (multi-goal support).
+goal_navigation_node.py — Closed-loop waypoint navigation for the Go2.
+
+Drives the robot through sequential goals using live LIDAR pose.
+Notifies Unity over UDP when each goal is reached.
+
+State machine (20 Hz):
+    IDLE → TURNING → DRIVING → GOAL_REACHED
+    Heading error < 0.08 rad to exit TURNING; distance < 0.35 m to exit DRIVING.
+
+Topics:
+    Sub  /unity_clicked_point  (Point)       — goal from TCP bridge
+    Sub  /utlidar/robot_pose   (PoseStamped) — live pose from LIDAR
+    Pub  /cmd_vel              (Twist)        — to cmd_vel_bridge
+    Pub  /goal_reached         (Bool)         — relayed to Unity via UDP :10004
+
+Key params (ros2 param set /goal_navigation_node <name> <value>):
+    max_speed 0.35 m/s · turn_speed 0.6 rad/s
+    goal_tolerance 0.35 m · heading_tolerance 0.08 rad · pose_timeout 3.0 s
+
+Coordinate convention (Unity → ROS in MultiGoalManager.cs):
+    ros_x = unity_z / scaleZ,  ros_y = -unity_x / scaleX
+
+Fail-safes: stops on LIDAR silence > 3 s. No obstacle avoidance.
+
+Usage:
+    ros2 run go2_behavior goal_navigation_node
 """
 
 import math
@@ -21,6 +44,7 @@ class GoalNavigationNode(Node):
     DRIVING = 'driving'
 
     def __init__(self):
+        """Initialize node, parameters, publishers, subscribers, and control loop timer."""
         super().__init__('goal_navigation_node')
 
         # ── Parameters ─────────────────────────────────────────────
@@ -78,6 +102,7 @@ class GoalNavigationNode(Node):
     # ── Callbacks ──────────────────────────────────────────────────
 
     def _on_pose(self, msg: PoseStamped):
+        """Update robot pose from LIDAR: extract x, y, yaw; set pose_ready=True; republish."""
         self.robot_x        = msg.pose.position.x
         self.robot_y        = msg.pose.position.y
         self.robot_yaw      = self._quat_to_yaw(msg.pose.orientation)
@@ -86,6 +111,7 @@ class GoalNavigationNode(Node):
         self._publish_pose()
 
     def _on_goal(self, msg: Point):
+        """Receive goal from Unity, store as (x,y), transition to TURNING phase."""
         if not self.pose_ready:
             self.get_logger().warn('No pose yet — waiting for /utlidar/robot_pose')
             return
@@ -100,6 +126,7 @@ class GoalNavigationNode(Node):
     # ── Control loop ───────────────────────────────────────────────
 
     def _loop(self):
+        """Run state machine: TURNING → DRIVING → goal reached. Detect timeout, publish /cmd_vel."""
         if not self.pose_ready or self.goal is None:
             return
 
@@ -157,16 +184,19 @@ class GoalNavigationNode(Node):
     # ── Helpers ────────────────────────────────────────────────────
 
     def _send(self, vx, wz):
+        """Publish Twist message to /cmd_vel with linear velocity vx and angular velocity wz."""
         msg = Twist()
         msg.linear.x  = float(vx)
         msg.angular.z = float(wz)
         self.cmd_pub.publish(msg)
 
     def _pub_status(self, s):
+        """Publish status string to /nav_status topic."""
         msg = String(); msg.data = s
         self.status_pub.publish(msg)
 
     def _publish_pose(self):
+        """Convert and publish robot pose to /estimated_pose (PoseStamped) for RViz."""
         msg = PoseStamped()
         msg.header.frame_id    = 'map'
         msg.header.stamp       = self.get_clock().now().to_msg()
@@ -178,11 +208,13 @@ class GoalNavigationNode(Node):
         self.est_pose_pub.publish(msg)
 
     def destroy_node(self):
+        """Close UDP socket and shutdown ROS node."""
         self._udp_sock.close()
         super().destroy_node()
 
     @staticmethod
     def _quat_to_yaw(q):
+        """Extract yaw (Z rotation) from quaternion using atan2."""
         return math.atan2(
             2.0 * (q.w * q.z + q.x * q.y),
             1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -190,10 +222,12 @@ class GoalNavigationNode(Node):
 
     @staticmethod
     def _norm(a):
+        """Normalize angle to [-π, π] range (shortest angular path)."""
         return (a + math.pi) % (2 * math.pi) - math.pi
     
     @staticmethod
     def _clamp(v, lo, hi):
+        """Clamp value v to range [lo, hi]."""
         return max(lo, min(hi, v))
 
 def main(args=None):

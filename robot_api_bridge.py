@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
 """
-Robot API Bridge — Convert ROS2 /api/sport_request to UDP commands for Go2 robot.
-Sends to 192.168.1.7:29999 (Unitree sport service).
+robot_api_bridge.py — Forward /api/sport_request to the Go2 over UDP.
+
+Subscribes to /api/sport_request (ROS2), strips the ROS header, and fires
+the payload to 192.168.123.161:29999 as a UDP datagram. Fire-and-forget;
+no ACK, no retry, ~2–5 ms latency.
+
+API IDs:
+    1001 Damp  1002 StandUp   1003 StandDown  1004 RecoveryStand
+    1006 Move  1008 MoveLoop  1016 Hello       1017 Stretch
+    1019 Wallow  1022 Dance1  1023 Dance2
+
+Related: cmd_vel_bridge.py · robot_odom_bridge.py · DynamicGestureHandler
+
+Usage:
+    ros2 run go2_robot_interface robot_api_bridge
 """
 
 import rclpy

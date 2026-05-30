@@ -3,7 +3,30 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-
+/// <summary>
+/// Gesture Sequence UI Controller - Main UI for creating, editing, and executing gesture sequences.
+/// 
+/// Features:
+/// - Create custom gesture sequences (Move + any gesture type)
+/// - Add waypoints to Move steps via ground clicking
+/// - Save/load/edit sequences persistently
+/// - Execute complete sequences with proper timing
+/// 
+/// Data Flow:
+/// 1. User creates sequence (Add Gesture)
+/// 2. For Move: user clicks ground to add waypoints
+/// 3. Save sequence → JSON file
+/// 4. Play sequence → ExecuteSequenceCoroutine()
+///    - Move steps: Navigate via MultiGoalManager
+///    - Gesture steps: Send API command via ROS
+/// 
+/// <remarks>
+/// Interaction with other systems:
+/// - GestureDataManager: Persistent storage (JSON)
+/// - MultiGoalManager: Waypoint navigation
+/// - ROS Bridge: Gesture command execution
+/// </remarks>
+/// </summary>
 public class GestureSequenceUI : MonoBehaviour
 {
     [Header("Screens")]
@@ -361,17 +384,202 @@ previewText.text = string.Join(" → ", previewSteps);
 
     public void PlaySequence()
     {
-        Debug.Log("Playing RoboDog sequence:");
+        if (sequenceSteps.Count == 0)
+        {
+            Debug.LogWarning("No gestures to play!");
+            return;
+        }
 
-        foreach (GestureStepData step in sequenceSteps)
-{
-    Debug.Log(step.stepName);
-
-    if (step.stepName == "Move")
-    {
-        Debug.Log("Move has " + step.waypoints.Count + " waypoints");
+        Debug.Log("▶ Playing RoboDog sequence: " + sequenceSteps.Count + " steps");
+        StartCoroutine(ExecuteSequenceCoroutine());
     }
-}
+
+    private System.Collections.IEnumerator ExecuteSequenceCoroutine()
+    {
+        for (int i = 0; i < sequenceSteps.Count; i++)
+        {
+            GestureStepData step = sequenceSteps[i];
+            Debug.Log($"[{i + 1}/{sequenceSteps.Count}] Executing: {step.stepName}");
+
+            if (step.stepName == "Move")
+            {
+                yield return StartCoroutine(ExecuteMoveStep(step));
+            }
+            else
+            {
+                yield return StartCoroutine(ExecuteGestureStep(step.stepName));
+            }
+
+            // Small delay between steps
+            yield return new WaitForSeconds(0.5f);
+        }
+
+        Debug.Log("✓ Sequence complete!");
+    }
+
+    private System.Collections.IEnumerator ExecuteMoveStep(GestureStepData moveStep)
+    {
+        if (moveStep.waypoints.Count == 0)
+        {
+            Debug.LogWarning("Move step has no waypoints!");
+            yield break;
+        }
+
+        Debug.Log($"  → Moving through {moveStep.waypoints.Count} waypoints...");
+
+        MultiGoalManager mgm = FindObjectOfType<MultiGoalManager>();
+        if (mgm == null)
+        {
+            Debug.LogError("MultiGoalManager not found!");
+            yield break;
+        }
+
+        // Load waypoints and start navigation
+        mgm.LoadWaypoints(moveStep.waypoints);
+        mgm.StartNavigation();
+
+        // Wait for navigation to complete (with timeout)
+        float timeout = 120f;  // 2 minutes for all waypoints
+        float elapsed = 0f;
+        
+        while (!mgm.IsNavigationComplete() && elapsed < timeout)
+        {
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (elapsed >= timeout)
+        {
+            Debug.LogWarning("Move step timed out!");
+        }
+        else
+        {
+            Debug.Log($"  ✓ Move step complete!");
+        }
+
+        mgm.ClearWaypoints();
+    }
+
+    private System.Collections.IEnumerator ExecuteGestureStep(string gestureName)
+    {
+        Debug.Log($"  → Executing gesture: {gestureName}");
+
+        // Map gesture names to Sport API IDs and durations
+        int apiId = GetGestureApiId(gestureName);
+        float duration = GetGestureDuration(gestureName);
+
+        if (apiId > 0)
+        {
+            Debug.Log($"  → Sending API command: id={apiId}, gesture='{gestureName}'");
+            Debug.Log($"  → Gesture will take ~{duration:F1}s to complete");
+            
+            // Send actual ROS command
+            SendGestureCommand(apiId);
+        }
+        else
+        {
+            Debug.LogWarning($"  ⚠ Unknown gesture: {gestureName}");
+        }
+
+        // Wait for gesture to complete
+        yield return new WaitForSeconds(duration);
+        Debug.Log($"  ✓ Gesture '{gestureName}' complete!");
+    }
+
+    private void SendGestureCommand(int apiId)
+    {
+        try
+        {
+            // Create JSON request matching unitree_api.msg.Request format
+            // Header with API ID
+            string jsonRequest = $@"{{
+                ""header"": {{
+                    ""identity"": {{
+                        ""api_id"": {apiId}
+                    }}
+                }},
+                ""parameter"": {{}}
+            }}";
+
+            // Find ROS-TCP bridge component
+            ROS_TCPBridge bridge = FindObjectOfType<ROS_TCPBridge>();
+            if (bridge != null)
+            {
+                // Send via ROS bridge to /api/sport/request topic
+                bridge.Send("/api/sport/request", jsonRequest);
+                Debug.Log($"[GestureSequenceUI] Sent gesture command via ROS-TCP: API {apiId}");
+            }
+            else
+            {
+                // Fallback: try to send via socket directly
+                Debug.LogWarning("[GestureSequenceUI] ROS_TCPBridge not found. Attempting direct socket send...");
+                SendGestureViaTCP(apiId);
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[GestureSequenceUI] Failed to send gesture command: {e.Message}");
+        }
+    }
+
+    private void SendGestureViaTCP(int apiId)
+    {
+        try
+        {
+            // Fallback direct TCP connection to ROS bridge (localhost:10000)
+            string json = $"{{\"header\":{{\"identity\":{{\"api_id\":{apiId}}}}},\"parameter\":{{}}}}";
+            byte[] data = System.Text.Encoding.UTF8.GetBytes(json);
+            
+            // Send with length prefix (4 bytes, big-endian)
+            int len = data.Length;
+            byte[] prefix = new byte[4]
+            {
+                (byte)(len >> 24), (byte)(len >> 16),
+                (byte)(len >>  8), (byte)(len)
+            };
+            
+            byte[] packet = new byte[4 + data.Length];
+            System.Buffer.BlockCopy(prefix, 0, packet, 0, 4);
+            System.Buffer.BlockCopy(data, 0, packet, 4, data.Length);
+            
+            System.Net.Sockets.TcpClient client = new System.Net.Sockets.TcpClient("127.0.0.1", 10000);
+            client.GetStream().Write(packet, 0, packet.Length);
+            client.Close();
+            
+            Debug.Log($"[GestureSequenceUI] Sent gesture via direct TCP: API {apiId}");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[GestureSequenceUI] Direct TCP send failed: {e.Message}");
+        }
+    }
+
+    private int GetGestureApiId(string gestureName)
+    {
+        return gestureName switch
+        {
+            "Raise Hand" => 1016,  // Hello (wave FR leg)
+            "Stand Up" => 1002,     // StandUp
+            "Sit Down" => 1003,     // StandDown
+            "Jump" => 1022,         // Dance1 (has jump-like motion)
+            "Stretch" => 1017,      // Stretch
+            "Dance" => 1022,        // Dance1
+            _ => -1  // Unknown gesture
+        };
+    }
+
+    private float GetGestureDuration(string gestureName)
+    {
+        return gestureName switch
+        {
+            "Raise Hand" => 3.0f,   // Hello gesture takes ~3s
+            "Stand Up" => 2.0f,     // Stand up takes ~2s
+            "Sit Down" => 2.0f,     // Sit down takes ~2s
+            "Jump" => 2.5f,         // Dance/jump takes ~2.5s
+            "Stretch" => 2.0f,      // Stretch takes ~2s
+            "Dance" => 3.0f,        // Dance takes ~3s
+            _ => 1.0f
+        };
     }
 
     public void ClearSequence()

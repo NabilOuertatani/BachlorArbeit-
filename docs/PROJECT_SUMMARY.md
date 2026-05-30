@@ -7,7 +7,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 🎯 Project Goals
+## Project Goals
 - Implement ROS2 communication framework for Unitree Go2 robot
 - Develop Unity-based graphical interface for robot control
 - Create behavior planning and execution system
@@ -16,7 +16,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 📦 Project Structure
+##  Project Structure
 
 ### Core ROS2 Packages (in `/src/`)
 
@@ -50,7 +50,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 🎮 Unity Integration
+## Unity Integration
 
 ### Recent Implementation (Latest Commits)
 
@@ -81,7 +81,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 🔧 Technical Stack
+##  Technical Stack
 
 ### ROS2 Configuration
 - **ROS2 Distribution:** Humble (recommended) / Foxy
@@ -103,9 +103,9 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 📋 Implemented Features
+##  Implemented Features
 
-### ✅ Completed
+### Completed
 1. **ROS2 Environment Setup**
    - Multi-package workspace configured
    - Build system configured with colcon
@@ -132,7 +132,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
    - Real-time message exchange
    - Point click publishing
 
-### 🚀 Recent Additions (Latest Commits)
+### Recent Additions (Latest Commits)
 - Unity click-to-goal control system
 - Zig-zag navigation path planning
 - Enhanced robot model (dawg.fbx)
@@ -141,7 +141,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 📊 Project Statistics
+## Project Statistics
 
 ### Code Organization
 - **Main Packages:** 5 (behavior, perception, interface, bringup, ROS-TCP-Endpoint)
@@ -160,7 +160,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 🔌 Key Integration Points
+##  Key Integration Points
 
 ### ROS2 Topics
 - **Publishing:**
@@ -179,7 +179,7 @@ A comprehensive ROS2-based robotics control system for the Unitree Go2 quadruped
 
 ---
 
-## 🛠️ Development Workflow
+## Development Workflow
 
 ### Building the Project
 ```bash
@@ -197,36 +197,6 @@ ros2 launch go2_bringup behavior.launch.py
 ros2 topic list
 ros2 topic echo /unity_clicked_point
 ```
-
----
-
-## 📝 Version Information
-- **Current Version:** From latest commits
-- **Last Update:** April 7, 2026
-- **Status:** Active Development
-- **Branch:** main
-
----
-
-## 🎓 Bachelor Thesis Project
-This is a comprehensive robotics project integrating:
-- ROS2 middleware architecture
-- Multi-package software design
-- Real-time 3D interface
-- Robot control systems
-- Unity game engine integration
-
----
-
-## 📌 Next Steps & Future Work
-1. Advanced path planning algorithms
-2. Obstacle avoidance integration
-3. Sensor fusion for perception
-4. Extended gesture library
-5. Performance optimization
-6. Hardware deployment and testing
-
----
 
 **Project Repository:** https://github.com/NabilOuertatani/BachlorArbeit-
 **Workspace Location:** `/home/haii/BachlorArbeit-/`

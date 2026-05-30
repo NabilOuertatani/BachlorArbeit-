@@ -1,4 +1,26 @@
 #!/usr/bin/env python3
+"""
+TCP Bridge Server — Gateway between Unity and ROS2.
+
+Listens on 0.0.0.0:10000. Each Unity connection gets its own thread;
+messages are queued and drained to ROS at 50 Hz.
+
+Protocol:
+    4-byte big-endian length prefix → JSON payload (UTF-8, max 65535 bytes)
+
+Message routing:
+    {"x", "y", "z"}                       → /unity_clicked_point (Point)
+    {"header": {"identity": {"api_id"}}}  → /api/sport_request   (Request)
+
+Threading:
+    Main thread   — accepts connections, spawns client threads
+    Client thread — reads, parses, enqueues (queue_lock)
+    Timer (20 ms) — drains queues, publishes to ROS
+
+Usage:
+    ros2 run ros_tcp_bridge bridge
+"""
+
 import socket
 import threading
 import struct
@@ -7,19 +29,23 @@ import re
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
+from unitree_api.msg import Request
 
 
 class TCPBridgeServer(Node):
     def __init__(self):
         super().__init__('tcp_bridge_server')
 
-        self.publisher = self.create_publisher(Point, '/unity_clicked_point', 10)
+        # Publishers for both waypoints and gestures
+        self.waypoint_pub = self.create_publisher(Point, '/unity_clicked_point', 10)
+        self.gesture_pub = self.create_publisher(Request, '/api/sport_request', 10)
 
         self.host = '0.0.0.0'
         self.port = 10000
         self._server_sock = None
 
         self._point_queue = []
+        self._gesture_queue = []
         self._queue_lock = threading.Lock()
         self.create_timer(0.02, self._drain_queue)
 
@@ -34,16 +60,29 @@ class TCPBridgeServer(Node):
 
     def _drain_queue(self):
         with self._queue_lock:
-            items = list(self._point_queue)
+            points = list(self._point_queue)
+            gestures = list(self._gesture_queue)
             self._point_queue.clear()
-        for point in items:
-            self.publisher.publish(point)
+            self._gesture_queue.clear()
+        
+        for point in points:
+            self.waypoint_pub.publish(point)
+        
+        for gesture in gestures:
+            self.gesture_pub.publish(gesture)
 
     def _enqueue_point(self, x, y, z):
         point = Point()
         point.x, point.y, point.z = x, y, z
         with self._queue_lock:
             self._point_queue.append(point)
+    
+    def _enqueue_gesture(self, api_id: int, parameter: str):
+        msg = Request()
+        msg.header.identity.api_id = api_id
+        msg.parameter = parameter
+        with self._queue_lock:
+            self._gesture_queue.append(msg)
 
     def _accept_loop(self):
         while rclpy.ok():
@@ -97,6 +136,14 @@ class TCPBridgeServer(Node):
     def _parse_json(self, payload: bytes):
         try:
             text = payload.decode('utf-8', errors='ignore')
+            data = json.loads(text)
+            
+            # Check if this is a gesture command (has api_id)
+            if 'header' in data and 'identity' in data['header'] and 'api_id' in data['header']['identity']:
+                self._handle_gesture_request(data)
+                return
+            
+            # Otherwise handle as waypoint
             # Use regex to extract x and y — ignore z (corrupted bytes from Unity)
             x_match = re.search(r'"x"\s*:\s*([-\d.]+)', text)
             y_match = re.search(r'"y"\s*:\s*([-\d.]+)', text)
@@ -109,6 +156,23 @@ class TCPBridgeServer(Node):
                 self.get_logger().warn(f'Could not parse x/y from: {text[:80]}')
         except Exception as e:
             self.get_logger().warn(f'Parse error: {e}')
+    
+    def _handle_gesture_request(self, data: dict):
+        """Handle gesture commands from Unity."""
+        try:
+            api_id = data['header']['identity']['api_id']
+            parameter = data.get('parameter', '{}')
+            
+            # If parameter is dict, convert to JSON string
+            if isinstance(parameter, dict):
+                parameter = json.dumps(parameter)
+            elif not isinstance(parameter, str):
+                parameter = '{}'
+            
+            self._enqueue_gesture(api_id, parameter)
+            self.get_logger().info(f'Gesture queued: api_id={api_id}, parameter={parameter}')
+        except Exception as e:
+            self.get_logger().error(f'Error handling gesture request: {e}')
 
 
 def main(args=None):
