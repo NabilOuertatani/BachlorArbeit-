@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using TMPro;
+using Unity.Robotics.ROSTCPConnector;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -102,24 +103,23 @@ public class GestureSequenceUI : MonoBehaviour
             return;
         }
 
-        // Get MultiGoalManager and collect waypoints
-        MultiGoalManager mgm = FindObjectOfType<MultiGoalManager>();
-        if (mgm == null)
+        // Get waypoints via RobotBridge (handles cross-scene communication)
+        if (RobotBridge.Instance == null)
         {
-            Debug.LogError("[GestureSequenceUI] MultiGoalManager not found in ANY scene!");
+            Debug.LogError("[GestureSequenceUI] RobotBridge not found! Add it to an empty GameObject in MainUI.unity.");
             return;
         }
 
-        Debug.Log("[GestureSequenceUI] Found MultiGoalManager");
+        Debug.Log("[GestureSequenceUI] Retrieving waypoints via RobotBridge");
 
-        List<Vector3> waypointsFromMGM = mgm.GetCurrentWaypoints();
-        Debug.Log("[GestureSequenceUI] Got " + waypointsFromMGM.Count + " waypoints from MultiGoalManager");
+        List<WaypointWithSpeed> waypointsFromBridge = RobotBridge.Instance.GetCurrentWaypointsWithSpeed();
+        Debug.Log("[GestureSequenceUI] Got " + waypointsFromBridge.Count + " waypoints with speeds");
         
         // Add waypoints to the current Move step
         lastStep.waypoints.Clear();
-        lastStep.waypoints.AddRange(waypointsFromMGM);
+        lastStep.waypoints.AddRange(waypointsFromBridge);
 
-        Debug.Log("[GestureSequenceUI] Added " + waypointsFromMGM.Count + " waypoints to step: " + lastStep.stepName);
+        Debug.Log("[GestureSequenceUI] Added " + waypointsFromBridge.Count + " waypoints to step: " + lastStep.stepName);
 
         // Update UI to show waypoint count
         TMP_Text[] allStepTexts = sequenceListParent.GetComponentsInChildren<TMP_Text>();
@@ -133,8 +133,11 @@ public class GestureSequenceUI : MonoBehaviour
         }
 
         // Clear waypoints from MultiGoalManager
-        mgm.ClearWaypoints();
+        RobotBridge.Instance.ClearWaypoints();
         Debug.Log("[GestureSequenceUI] Cleared MultiGoalManager waypoints");
+
+        // AUTO-SAVE: Save the sequence to JSON immediately after adding waypoints
+        SaveSequence();
     }
 
     private void AddStepToUI(string stepName)
@@ -188,7 +191,7 @@ previewText.text = string.Join(" → ", previewSteps);
             Debug.Log("[GestureSequenceUI] Created GestureDataManager");
         }
 
-        // Create saved sequence with full step data (including waypoints)
+        // Create saved sequence with full step data (including waypoints and speeds)
         GestureDataManager.SavedSequence savedSeq = new GestureDataManager.SavedSequence();
         savedSeq.name = "Sequence " + (GestureDataManager.Instance.savedSequences.Count + 1);
 
@@ -201,16 +204,17 @@ previewText.text = string.Join(" → ", previewSteps);
             if (step.stepName == "Move")
             {
                 savedStep.waypoints = new List<GestureDataManager.SerializableVector3>();
-                foreach (Vector3 wp in step.waypoints)
+                foreach (WaypointWithSpeed wp in step.waypoints)
                 {
-                    savedStep.waypoints.Add(new GestureDataManager.SerializableVector3(wp));
+                    // Save waypoint position AND speed
+                    savedStep.waypoints.Add(new GestureDataManager.SerializableVector3(wp.unityPosition, wp.speed));
                 }
             }
             
             savedSeq.steps.Add(savedStep);
         }
 
-        // Save to persistent storage (with full waypoint data!)
+        // Save to persistent storage (with full waypoint data AND speeds!)
         if (editingIndex >= 0)
         {
             if (GestureDataManager.Instance != null)
@@ -223,7 +227,7 @@ previewText.text = string.Join(" → ", previewSteps);
                 GestureDataManager.Instance.AddSequence(savedSeq);
         }
 
-        Debug.Log("[GestureSequenceUI] Saved sequence with " + sequenceSteps.Count + " steps and waypoints");
+        Debug.Log("[GestureSequenceUI] Saved sequence with " + sequenceSteps.Count + " steps and waypoints with speeds");
         ClearSequence();
         ShowHome();
         DisplaySavedSequences();
@@ -345,7 +349,7 @@ previewText.text = string.Join(" → ", previewSteps);
 
         GestureDataManager.SavedSequence savedSeq = GestureDataManager.Instance.savedSequences[index];
 
-        // Reconstruct sequence with waypoints
+        // Reconstruct sequence with waypoints and speeds
         foreach (GestureDataManager.SavedStep savedStep in savedSeq.steps)
         {
             GestureStepData stepData = new GestureStepData(savedStep.stepName);
@@ -355,7 +359,17 @@ previewText.text = string.Join(" → ", previewSteps);
             {
                 foreach (GestureDataManager.SerializableVector3 wp in savedStep.waypoints)
                 {
-                    stepData.waypoints.Add(wp.ToVector3());
+                    Vector3 unityPos = wp.ToVector3();
+                    
+                    // Recalculate ROS position from Unity position
+                    // Standard transformation: ros_x = unity_z / 2, ros_y = -unity_x / 2
+                    float rosX = unityPos.z / 2f;
+                    float rosY = -unityPos.x / 2f;
+                    Vector3 rosPos = new Vector3(rosX, rosY, 0);
+                    
+                    // Create WaypointWithSpeed with both position and speed
+                    WaypointWithSpeed waypoint = new WaypointWithSpeed(unityPos, rosPos, wp.speed);
+                    stepData.waypoints.Add(waypoint);
                 }
             }
             
@@ -390,7 +404,7 @@ previewText.text = string.Join(" → ", previewSteps);
             return;
         }
 
-        Debug.Log("▶ Playing RoboDog sequence: " + sequenceSteps.Count + " steps");
+        Debug.Log("▶Playing RoboDog sequence: " + sequenceSteps.Count + " steps");
         StartCoroutine(ExecuteSequenceCoroutine());
     }
 
@@ -421,43 +435,47 @@ previewText.text = string.Join(" → ", previewSteps);
     {
         if (moveStep.waypoints.Count == 0)
         {
-            Debug.LogWarning("Move step has no waypoints!");
+            Debug.LogWarning("[GestureSequenceUI] Move step has no waypoints — skipping.");
             yield break;
         }
 
-        Debug.Log($"  → Moving through {moveStep.waypoints.Count} waypoints...");
-
-        MultiGoalManager mgm = FindObjectOfType<MultiGoalManager>();
-        if (mgm == null)
+        if (RobotBridge.Instance == null)
         {
-            Debug.LogError("MultiGoalManager not found!");
+            Debug.LogError("[GestureSequenceUI] RobotBridge not found!");
             yield break;
         }
 
-        // Load waypoints and start navigation
-        mgm.LoadWaypoints(moveStep.waypoints);
-        mgm.StartNavigation();
+        Debug.Log($"  → Moving through {moveStep.waypoints.Count} waypoints with per-waypoint speeds...");
 
-        // Wait for navigation to complete (with timeout)
-        float timeout = 120f;  // 2 minutes for all waypoints
+        // Load waypoints with speeds into MultiGoalManager (via Bridge)
+        // This preserves individual speeds for each waypoint segment
+        // MultiGoalManager will use these speeds when sending waypoints via TCP
+        yield return RobotBridge.Instance.LoadWaypointsAsync(moveStep.waypoints);
+
+        // Start navigation — MultiGoalManager sends first waypoint via TCP
+        // goal_navigation_node.py receives it and drives the real robot
+        // When robot arrives, UDP signal comes back → MultiGoalManager._goalReached = true
+        // → AdvanceToNextGoal() is called automatically for each waypoint
+        RobotBridge.Instance.StartNavigation();
+
+        // Wait for ALL waypoints to be completed
+        // IsNavigationComplete() returns true when _isWalking = false in MultiGoalManager
+        // which happens after the last AdvanceToNextGoal() call
+        float timeout = 300f;  // 5 minutes max for a full move step
         float elapsed = 0f;
-        
-        while (!mgm.IsNavigationComplete() && elapsed < timeout)
+
+        while (!RobotBridge.Instance.IsNavigationComplete() && elapsed < timeout)
         {
             elapsed += Time.deltaTime;
             yield return null;
         }
 
         if (elapsed >= timeout)
-        {
-            Debug.LogWarning("Move step timed out!");
-        }
+            Debug.LogWarning("[GestureSequenceUI] Move step timed out after 5 minutes.");
         else
-        {
-            Debug.Log($"  ✓ Move step complete!");
-        }
+            Debug.Log("  ✓ Move step complete — all waypoints reached!");
 
-        mgm.ClearWaypoints();
+        RobotBridge.Instance.ClearWaypoints();
     }
 
     private System.Collections.IEnumerator ExecuteGestureStep(string gestureName)
@@ -490,35 +508,24 @@ previewText.text = string.Join(" → ", previewSteps);
     {
         try
         {
-            // Create JSON request matching unitree_api.msg.Request format
-            // Header with API ID
-            string jsonRequest = $@"{{
-                ""header"": {{
-                    ""identity"": {{
-                        ""api_id"": {apiId}
-                    }}
-                }},
-                ""parameter"": {{}}
-            }}";
+            ROSConnection ros = ROSConnection.GetOrCreateInstance();
+            
+            // Register publisher if not already registered
+            // Topic matches what the Unitree Go2 expects
+            ros.RegisterPublisher<SportRequestMsg>("/api/sport/request");
 
-            // Find ROS-TCP bridge component
-            ROS_TCPBridge bridge = FindObjectOfType<ROS_TCPBridge>();
-            if (bridge != null)
-            {
-                // Send via ROS bridge to /api/sport/request topic
-                bridge.Send("/api/sport/request", jsonRequest);
-                Debug.Log($"[GestureSequenceUI] Sent gesture command via ROS-TCP: API {apiId}");
-            }
-            else
-            {
-                // Fallback: try to send via socket directly
-                Debug.LogWarning("[GestureSequenceUI] ROS_TCPBridge not found. Attempting direct socket send...");
-                SendGestureViaTCP(apiId);
-            }
+            SportRequestMsg msg = new SportRequestMsg();
+            msg.header.identity.api_id = apiId;
+            msg.parameter = "{}";
+
+            ros.Publish("/api/sport/request", msg);
+            Debug.Log($"[GestureSequenceUI] Published to /api/sport/request: api_id={apiId}");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"[GestureSequenceUI] Failed to send gesture command: {e.Message}");
+            Debug.LogError($"[GestureSequenceUI] Failed to publish gesture: {e.Message}");
+            // Fallback to direct TCP
+            SendGestureViaTCP(apiId);
         }
     }
 
@@ -526,7 +533,9 @@ previewText.text = string.Join(" → ", previewSteps);
     {
         try
         {
-            // Fallback direct TCP connection to ROS bridge (localhost:10000)
+            // Fallback: direct TCP connection to ROS bridge (localhost:10000)
+            // Only used if ROS publisher fails
+            Debug.Log("[GestureSequenceUI] Using TCP fallback...");
             string json = $"{{\"header\":{{\"identity\":{{\"api_id\":{apiId}}}}},\"parameter\":{{}}}}";
             byte[] data = System.Text.Encoding.UTF8.GetBytes(json);
             
@@ -546,39 +555,41 @@ previewText.text = string.Join(" → ", previewSteps);
             client.GetStream().Write(packet, 0, packet.Length);
             client.Close();
             
-            Debug.Log($"[GestureSequenceUI] Sent gesture via direct TCP: API {apiId}");
+            Debug.Log($"[GestureSequenceUI] Sent gesture via TCP fallback: API {apiId}");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"[GestureSequenceUI] Direct TCP send failed: {e.Message}");
+            Debug.LogError($"[GestureSequenceUI] TCP fallback failed: {e.Message}");
         }
     }
 
     private int GetGestureApiId(string gestureName)
     {
-        return gestureName switch
+        // Normalize to lowercase to avoid case mismatches from saved JSON
+        return gestureName.ToLower().Trim() switch
         {
-            "Raise Hand" => 1016,  // Hello (wave FR leg)
-            "Stand Up" => 1002,     // StandUp
-            "Sit Down" => 1003,     // StandDown
-            "Jump" => 1022,         // Dance1 (has jump-like motion)
-            "Stretch" => 1017,      // Stretch
-            "Dance" => 1022,        // Dance1
-            _ => -1  // Unknown gesture
+            "raise hand"  => 1016,  // Hello (wave FR leg)
+            "stand up"    => 1002,  // StandUp
+            "sit down"    => 1003,  // StandDown
+            "jump"        => 1022,  // Dance1 (has jump-like motion)
+            "stretch"     => 1017,  // Stretch
+            "dance"       => 1022,  // Dance1
+            _             => -1     // Unknown gesture
         };
     }
 
     private float GetGestureDuration(string gestureName)
     {
-        return gestureName switch
+        // Normalize to lowercase to avoid case mismatches from saved JSON
+        return gestureName.ToLower().Trim() switch
         {
-            "Raise Hand" => 3.0f,   // Hello gesture takes ~3s
-            "Stand Up" => 2.0f,     // Stand up takes ~2s
-            "Sit Down" => 2.0f,     // Sit down takes ~2s
-            "Jump" => 2.5f,         // Dance/jump takes ~2.5s
-            "Stretch" => 2.0f,      // Stretch takes ~2s
-            "Dance" => 3.0f,        // Dance takes ~3s
-            _ => 1.0f
+            "raise hand"  => 3.0f,
+            "stand up"    => 2.0f,
+            "sit down"    => 2.0f,
+            "jump"        => 2.5f,
+            "stretch"     => 2.0f,
+            "dance"       => 3.0f,
+            _             => 1.0f
         };
     }
 

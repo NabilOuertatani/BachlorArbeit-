@@ -28,6 +28,7 @@ public class MultiGoalManager : MonoBehaviour
     public GameObject    waypointPrefab;
     public Transform     waypointParent;
     public Canvas        mainUICanvas;
+    public SpeedSelector speedSelector;  // NEW: UI for speed selection
 
     [Header("UI")]
     public Button          walkButton;
@@ -52,12 +53,12 @@ public class MultiGoalManager : MonoBehaviour
     public Color doneColor    = new Color(0.4f, 0.4f, 0.4f);
 
     // ── Internal ───────────────────────────────────────────────────
-    private List<Vector3>    _rosGoals = new List<Vector3>();
-    private List<Vector3>    _unityPos = new List<Vector3>();
+    private List<WaypointWithSpeed> _waypoints = new List<WaypointWithSpeed>();  // NEW: stores waypoints with speeds
     private List<GameObject> _markers  = new List<GameObject>();
 
     private int  _currentIndex = -1;
     private bool _isWalking    = false;
+    private bool _inputEnabled = true;  // Disabled during watch-only mode
 
     // TCP
     private TcpClient     _tcp;
@@ -78,7 +79,35 @@ public class MultiGoalManager : MonoBehaviour
 
     void Start()
     {
+        // Register with bridge so it can control navigation
+        if (RobotBridge.Instance != null)
+        {
+            RobotBridge.Instance.RegisterMultiGoalManager(this);
+        }
         if (sceneCamera == null) sceneCamera = Camera.main;
+
+        // Register with the persistent RobotBridge for cross-scene communication
+        if (RobotBridge.Instance != null)
+            RobotBridge.Instance.RegisterMultiGoalManager(this);
+        else
+            Debug.LogWarning("[MultiGoalManager] RobotBridge not found — was it created in MainUI.unity?");
+
+        // Auto-find SpeedSelector if not assigned
+        if (speedSelector == null)
+        {
+            speedSelector = FindObjectOfType<SpeedSelector>();
+            if (speedSelector != null)
+                Debug.Log("[MultiGoalManager] Auto-found SpeedSelector");
+            else
+                Debug.LogWarning("[MultiGoalManager] SpeedSelector not found in scene! Assign it manually in Inspector.");
+        }
+
+        // Subscribe to speed confirmation event to auto-save to JSON
+        if (speedSelector != null)
+        {
+            speedSelector.OnSpeedConfirmed += OnSpeedConfirmedByUser;
+            Debug.Log("[MultiGoalManager] Subscribed to OnSpeedConfirmed event");
+        }
 
         walkButton.onClick.AddListener(OnWalkPressed);
         clearButton.onClick.AddListener(OnClearPressed);
@@ -107,7 +136,8 @@ public class MultiGoalManager : MonoBehaviour
 
     void Update()
     {
-        if (!_isWalking && Input.GetMouseButtonDown(0))
+        // Only accept floor clicks if input is enabled AND not currently walking
+        if (_inputEnabled && !_isWalking && Input.GetMouseButtonDown(0))
             TryAddWaypoint();
 
         bool reached = false;
@@ -130,6 +160,28 @@ public class MultiGoalManager : MonoBehaviour
         _udp?.Close();
     }
 
+    // ── Input control (called by RobotBridge) ───────────────────
+
+    /// <summary>
+    /// Disables floor click input so waypoints can't be added during watch-only mode.
+    /// Called by RobotBridge when entering simulation.
+    /// </summary>
+    public void DisableInput()
+    {
+        _inputEnabled = false;
+        Debug.Log("[MultiGoalManager] Input disabled — watch-only mode active");
+    }
+
+    /// <summary>
+    /// Re-enables floor click input after watch-only mode ends.
+    /// Called by RobotBridge when exiting simulation.
+    /// </summary>
+    public void EnableInput()
+    {
+        _inputEnabled = true;
+        Debug.Log("[MultiGoalManager] Input enabled — waypoint collection active");
+    }
+
     // ── Waypoint collection ────────────────────────────────────────
 
     void TryAddWaypoint()
@@ -150,10 +202,16 @@ public class MultiGoalManager : MonoBehaviour
         float rosX =  unityPos.z / scaleZ;
         float rosY = -unityPos.x / scaleX;
 
-        _rosGoals.Add(new Vector3(rosX, rosY, 0));
-        _unityPos.Add(unityPos);
+        // Create placeholder waypoint (speed will be set after user selection)
+        WaypointWithSpeed wp = new WaypointWithSpeed(
+            unityPos,
+            new Vector3(rosX, rosY, 0),
+            0.4f  // Default to normal speed
+        );
 
-        // Spawn marker
+        _waypoints.Add(wp);
+
+        // Spawn marker with default color
         GameObject m = waypointParent != null
             ? Instantiate(waypointPrefab, waypointParent)
             : Instantiate(waypointPrefab);
@@ -171,25 +229,46 @@ public class MultiGoalManager : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color     = Color.white;
 
+        // Speed label (initially empty, will update when speed is selected)
+        GameObject speedLabelObj = new GameObject("SpeedLabel");
+        speedLabelObj.transform.SetParent(m.transform);
+        speedLabelObj.transform.localPosition = Vector3.up * 0.6f;
+        var speedTmp = speedLabelObj.AddComponent<TextMeshPro>();
+        speedTmp.text = "0.4 m/s";
+        speedTmp.fontSize = 2;
+        speedTmp.alignment = TextAlignmentOptions.Center;
+        speedTmp.color = Color.white;
+        speedLabelObj.name = "SpeedLabel";
+
         _markers.Add(m);
         walkButton.interactable = true;
-        SetStatus(_markers.Count + " waypoint(s) — press WALK to start");
+        SetStatus(_markers.Count + " waypoint(s) — select speed and press ADD POINTS");
 
         Debug.Log("[MultiGoalManager] Waypoint " + _markers.Count +
-                  " Unity(" + unityPos.x.ToString("F2") + ", " + unityPos.z.ToString("F2") + ")" +
+                  " placed at Unity(" + unityPos.x.ToString("F2") + ", " + unityPos.z.ToString("F2") + ")" +
                   " → ROS(" + rosX.ToString("F2") + ", " + rosY.ToString("F2") + ")");
+
+        // Show speed selector for this waypoint
+        if (speedSelector != null)
+        {
+            speedSelector.Show(_waypoints.Count - 1);
+        }
+        else
+        {
+            Debug.LogWarning("[MultiGoalManager] SpeedSelector not assigned!");
+        }
     }
 
     // ── Walk ───────────────────────────────────────────────────────
 
     void OnWalkPressed()
     {
-        if (_rosGoals.Count == 0) return;
+        if (_waypoints.Count == 0) return;
         _isWalking    = true;
         _currentIndex = -1;
         walkButton.interactable  = false;
         clearButton.interactable = false;
-        Debug.Log("[MultiGoalManager] Starting walk — " + _rosGoals.Count + " waypoints");
+        Debug.Log("[MultiGoalManager] Starting walk — " + _waypoints.Count + " waypoints");
         AdvanceToNextGoal();
     }
 
@@ -200,7 +279,7 @@ public class MultiGoalManager : MonoBehaviour
 
         _currentIndex++;
 
-        if (_currentIndex >= _rosGoals.Count)
+        if (_currentIndex >= _waypoints.Count)
         {
             _isWalking               = false;
             clearButton.interactable = true;
@@ -211,18 +290,21 @@ public class MultiGoalManager : MonoBehaviour
 
         SetMarkerColor(_markers[_currentIndex], activeColor);
 
+        // Update goal marker position
+        WaypointWithSpeed wp = _waypoints[_currentIndex];
         if (goalMarker != null)
             goalMarker.position = new Vector3(
-                _unityPos[_currentIndex].x,
+                wp.unityPosition.x,
                 goalMarker.position.y,
-                _unityPos[_currentIndex].z
+                wp.unityPosition.z
             );
 
-        // Build packet — big-endian length prefix
-        Vector3 g    = _rosGoals[_currentIndex];
-        string  json = "{\"x\":"  + g.x.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) +
-                       ",\"y\":" + g.y.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) +
-                       ",\"z\":0}";
+        // Build packet with speed — big-endian length prefix
+        string json = "{\"x\":"  + wp.rosGoal.x.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) +
+                      ",\"y\":" + wp.rosGoal.y.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) +
+                      ",\"z\":0" +
+                      ",\"speed\":" + wp.speed.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
+                      "}";
 
         byte[] payload = Encoding.UTF8.GetBytes(json);
         int    len     = payload.Length;
@@ -237,8 +319,7 @@ public class MultiGoalManager : MonoBehaviour
 
         lock (_qLock) { _sendQueue.Enqueue(packet); }
 
-        SetStatus("Going to waypoint " + (_currentIndex + 1) + " / " + _rosGoals.Count);
-        Debug.Log("[MultiGoalManager] Sending goal " + (_currentIndex + 1) + ": " + json);
+        Debug.Log($"[MultiGoalManager] Sent waypoint {_currentIndex + 1}: " + json);
     }
 
     // ── Clear ──────────────────────────────────────────────────────
@@ -247,8 +328,7 @@ public class MultiGoalManager : MonoBehaviour
     {
         _isWalking    = false;
         _currentIndex = -1;
-        _rosGoals.Clear();
-        _unityPos.Clear();
+        _waypoints.Clear();
         foreach (var m in _markers) Destroy(m);
         _markers.Clear();
         walkButton.interactable  = false;
@@ -256,8 +336,71 @@ public class MultiGoalManager : MonoBehaviour
         SetStatus("Cleared — click floor to add waypoints");
     }
 
+    /// <summary>Called when user confirms speed selection (button click or Enter)</summary>
+    void OnSpeedConfirmedByUser(int waypointIndex, float speed)
+    {
+        if (waypointIndex < 0 || waypointIndex >= _waypoints.Count)
+        {
+            Debug.LogWarning($"[MultiGoalManager] Invalid waypoint index {waypointIndex}");
+            return;
+        }
+
+        // Update waypoint speed
+        _waypoints[waypointIndex].speed = Mathf.Clamp(speed, 0.1f, 1.0f);
+        Debug.Log($"[MultiGoalManager] Speed confirmed for waypoint {waypointIndex + 1}: {speed:F2} m/s");
+
+        // Update marker speed label and color
+        if (waypointIndex < _markers.Count)
+        {
+            GameObject marker = _markers[waypointIndex];
+            Transform speedLabelTransform = marker.transform.Find("SpeedLabel");
+            if (speedLabelTransform != null)
+            {
+                TextMeshPro speedText = speedLabelTransform.GetComponent<TextMeshPro>();
+                if (speedText != null)
+                {
+                    speedText.text = _waypoints[waypointIndex].speed.ToString("F2") + " m/s";
+                }
+            }
+
+            // Update marker color based on new speed
+            SetMarkerColor(marker, SpeedSelector.GetSpeedColor(_waypoints[waypointIndex].speed));
+        }
+
+        // Note: Actual save to JSON happens when ADD WAYPOINTS or WALK button is clicked
+        // via the existing OnAddWaypointsPressed() flow, not here during speed selection
+    }
+
     void OnAddWaypointsPressed()
     {
+        // Apply speed selection to the last waypoint
+        if (_waypoints.Count > 0 && speedSelector != null)
+        {
+            float selectedSpeed = speedSelector.GetSelectedSpeed();
+            _waypoints[_waypoints.Count - 1].speed = selectedSpeed;
+
+            // Update the marker's speed label and color
+            GameObject lastMarker = _markers[_markers.Count - 1];
+            Transform speedLabelTransform = lastMarker.transform.Find("SpeedLabel");
+            if (speedLabelTransform != null)
+            {
+                TextMeshPro speedText = speedLabelTransform.GetComponent<TextMeshPro>();
+                if (speedText != null)
+                {
+                    speedText.text = selectedSpeed.ToString("F2") + " m/s";
+                }
+            }
+
+            // Update marker color based on speed
+            SetMarkerColor(lastMarker, SpeedSelector.GetSpeedColor(selectedSpeed));
+
+            Debug.Log($"[MultiGoalManager] Waypoint {_waypoints.Count} speed set to {selectedSpeed:F2} m/s");
+        }
+
+        // Hide speed panel
+        if (speedSelector != null)
+            speedSelector.Hide();
+
         Debug.Log("[MultiGoalManager] Add Waypoints button pressed!");
         
         GestureSequenceUI gestureUI = FindObjectOfType<GestureSequenceUI>();
@@ -361,14 +504,22 @@ public class MultiGoalManager : MonoBehaviour
     /// <summary>Get list of waypoints added to current gesture step</summary>
     public List<Vector3> GetCurrentWaypoints()
     {
-        return new List<Vector3>(_unityPos);
+        List<Vector3> positions = new List<Vector3>();
+        foreach (WaypointWithSpeed wp in _waypoints)
+            positions.Add(wp.unityPosition);
+        return positions;
+    }
+
+    /// <summary>Get current waypoints WITH speeds (for saving sequences)</summary>
+    public List<WaypointWithSpeed> GetCurrentWaypointsWithSpeed()
+    {
+        return new List<WaypointWithSpeed>(_waypoints);
     }
 
     /// <summary>Clear waypoints after saving to gesture</summary>
     public void ClearWaypoints()
     {
-        _rosGoals.Clear();
-        _unityPos.Clear();
+        _waypoints.Clear();
         
         foreach (GameObject m in _markers)
             Destroy(m);
@@ -379,7 +530,7 @@ public class MultiGoalManager : MonoBehaviour
         Debug.Log("[MultiGoalManager] Cleared all waypoints");
     }
 
-    /// <summary>Load waypoints from gesture step (Unity coordinates)</summary>
+    /// <summary>Load waypoints from gesture step (Unity coordinates, with default speed)</summary>
     public void LoadWaypoints(List<Vector3> unityWaypoints)
     {
         ClearWaypoints();
@@ -390,8 +541,14 @@ public class MultiGoalManager : MonoBehaviour
             float rosX = unityPos.z / scaleZ;
             float rosY = -unityPos.x / scaleX;
             
-            _rosGoals.Add(new Vector3(rosX, rosY, 0));
-            _unityPos.Add(unityPos);
+            // Create waypoint with default speed
+            WaypointWithSpeed wp = new WaypointWithSpeed(
+                unityPos,
+                new Vector3(rosX, rosY, 0),
+                0.4f  // Default to normal speed
+            );
+            
+            _waypoints.Add(wp);
             
             // Spawn marker
             GameObject m = waypointParent != null
@@ -401,18 +558,65 @@ public class MultiGoalManager : MonoBehaviour
             m.transform.position = new Vector3(unityPos.x, 0.15f, unityPos.z);
             SetMarkerColor(m, pendingColor);
             
+            // Add speed label
+            GameObject speedLabelObj = new GameObject("SpeedLabel");
+            speedLabelObj.transform.SetParent(m.transform);
+            speedLabelObj.transform.localPosition = Vector3.up * 0.6f;
+            var speedTmp = speedLabelObj.AddComponent<TextMeshPro>();
+            speedTmp.text = "0.4 m/s";
+            speedTmp.fontSize = 2;
+            speedTmp.alignment = TextAlignmentOptions.Center;
+            speedTmp.color = Color.white;
+            
             _markers.Add(m);
         }
         
-        walkButton.interactable = _rosGoals.Count > 0;
+        walkButton.interactable = _waypoints.Count > 0;
         SetStatus(_markers.Count + " waypoint(s) loaded");
-        Debug.Log("[MultiGoalManager] Loaded " + _rosGoals.Count + " waypoints");
+        Debug.Log("[MultiGoalManager] Loaded " + _waypoints.Count + " waypoints with default speed 0.4 m/s");
+    }
+
+    /// <summary>Load waypoints with individual speeds (preserves speeds from loaded sequences)</summary>
+    public void LoadWaypoints(List<WaypointWithSpeed> waypointsWithSpeeds)
+    {
+        ClearWaypoints();
+        
+        foreach (WaypointWithSpeed wp in waypointsWithSpeeds)
+        {
+            // Use the waypoint as-is (already has both positions and speed)
+            _waypoints.Add(wp);
+            
+            // Spawn marker
+            GameObject m = waypointParent != null
+                ? Instantiate(waypointPrefab, waypointParent)
+                : Instantiate(waypointPrefab);
+            
+            Vector3 unityPos = wp.unityPosition;
+            m.transform.position = new Vector3(unityPos.x, 0.15f, unityPos.z);
+            SetMarkerColor(m, SpeedSelector.GetSpeedColor(wp.speed));
+            
+            // Add speed label with actual speed
+            GameObject speedLabelObj = new GameObject("SpeedLabel");
+            speedLabelObj.transform.SetParent(m.transform);
+            speedLabelObj.transform.localPosition = Vector3.up * 0.6f;
+            var speedTmp = speedLabelObj.AddComponent<TextMeshPro>();
+            speedTmp.text = wp.speed.ToString("F2") + " m/s";
+            speedTmp.fontSize = 2;
+            speedTmp.alignment = TextAlignmentOptions.Center;
+            speedTmp.color = Color.white;
+            
+            _markers.Add(m);
+        }
+        
+        walkButton.interactable = _waypoints.Count > 0;
+        SetStatus(_markers.Count + " waypoint(s) loaded with per-waypoint speeds");
+        Debug.Log("[MultiGoalManager] Loaded " + _waypoints.Count + " waypoints with individual speeds");
     }
 
     /// <summary>Start navigation through loaded waypoints</summary>
     public void StartNavigation()
     {
-        if (_rosGoals.Count == 0)
+        if (_waypoints.Count == 0)
         {
             Debug.LogWarning("[MultiGoalManager] No waypoints loaded!");
             return;
@@ -422,7 +626,7 @@ public class MultiGoalManager : MonoBehaviour
         _currentIndex = -1;
         walkButton.interactable = false;
         clearButton.interactable = false;
-        Debug.Log("[MultiGoalManager] Starting navigation — " + _rosGoals.Count + " waypoints");
+        Debug.Log("[MultiGoalManager] Starting navigation — " + _waypoints.Count + " waypoints");
         AdvanceToNextGoal();
     }
 
@@ -439,8 +643,14 @@ public class MultiGoalManager : MonoBehaviour
         float rosX = unityPos.z / scaleZ;
         float rosY = -unityPos.x / scaleX;
         
-        _rosGoals.Add(new Vector3(rosX, rosY, 0));
-        _unityPos.Add(unityPos);
+        // Create waypoint with default speed
+        WaypointWithSpeed wp = new WaypointWithSpeed(
+            unityPos,
+            new Vector3(rosX, rosY, 0),
+            0.4f  // Default to normal speed
+        );
+        
+        _waypoints.Add(wp);
         
         // Spawn marker
         GameObject m = waypointParent != null

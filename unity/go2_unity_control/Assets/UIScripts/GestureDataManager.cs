@@ -32,9 +32,11 @@ public class GestureDataManager : MonoBehaviour
     public class SerializableVector3
     {
         public float x, y, z;
+        public float speed = 0.4f;  // Default 0.4 m/s if not specified (backward compatibility)
 
         public SerializableVector3() { }
-        public SerializableVector3(Vector3 v) { x = v.x; y = v.y; z = v.z; }
+        public SerializableVector3(Vector3 v) { x = v.x; y = v.y; z = v.z; speed = 0.4f; }
+        public SerializableVector3(Vector3 v, float spd) { x = v.x; y = v.y; z = v.z; speed = Mathf.Clamp(spd, 0.1f, 1.0f); }
         public Vector3 ToVector3() { return new Vector3(x, y, z); }
     }
 

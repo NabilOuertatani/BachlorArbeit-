@@ -18,7 +18,7 @@ public class SceneSwitcher : MonoBehaviour
             mainUICanvas.enabled = false;
         
         // Load UnityInterface additively on top
-        SceneManager.LoadScene("UnityInterface", LoadSceneMode.Additive);
+      //  SceneManager.LoadScene("UnityInterface", LoadSceneMode.Additive);
     }
 
     public void GoToMainUI()
@@ -28,6 +28,6 @@ public class SceneSwitcher : MonoBehaviour
             mainUICanvas.enabled = true;
         
         // Unload UnityInterface scene
-        SceneManager.UnloadSceneAsync("UnityInterface");
+        //SceneManager.UnloadSceneAsync("UnityInterface");
     }
 }

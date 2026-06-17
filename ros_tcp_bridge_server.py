@@ -29,6 +29,7 @@ import re
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
+from std_msgs.msg import Float32
 from unitree_api.msg import Request
 
 
@@ -36,8 +37,9 @@ class TCPBridgeServer(Node):
     def __init__(self):
         super().__init__('tcp_bridge_server')
 
-        # Publishers for both waypoints and gestures
+        # Publishers for waypoints, speeds, and gestures
         self.waypoint_pub = self.create_publisher(Point, '/unity_clicked_point', 10)
+        self.speed_pub = self.create_publisher(Float32, '/nav_waypoint_speed', 10)
         self.gesture_pub = self.create_publisher(Request, '/api/sport_request', 10)
 
         self.host = '0.0.0.0'
@@ -45,6 +47,7 @@ class TCPBridgeServer(Node):
         self._server_sock = None
 
         self._point_queue = []
+        self._speed_queue = []
         self._gesture_queue = []
         self._queue_lock = threading.Lock()
         self.create_timer(0.02, self._drain_queue)
@@ -61,12 +64,17 @@ class TCPBridgeServer(Node):
     def _drain_queue(self):
         with self._queue_lock:
             points = list(self._point_queue)
+            speeds = list(self._speed_queue)
             gestures = list(self._gesture_queue)
             self._point_queue.clear()
+            self._speed_queue.clear()
             self._gesture_queue.clear()
         
         for point in points:
             self.waypoint_pub.publish(point)
+        
+        for speed in speeds:
+            self.speed_pub.publish(speed)
         
         for gesture in gestures:
             self.gesture_pub.publish(gesture)
@@ -76,6 +84,13 @@ class TCPBridgeServer(Node):
         point.x, point.y, point.z = x, y, z
         with self._queue_lock:
             self._point_queue.append(point)
+    
+    def _enqueue_speed(self, speed: float):
+        """Enqueue speed message to be published to /nav_waypoint_speed"""
+        msg = Float32()
+        msg.data = float(speed)
+        with self._queue_lock:
+            self._speed_queue.append(msg)
     
     def _enqueue_gesture(self, api_id: int, parameter: str):
         msg = Request()
@@ -144,14 +159,17 @@ class TCPBridgeServer(Node):
                 return
             
             # Otherwise handle as waypoint
-            # Use regex to extract x and y — ignore z (corrupted bytes from Unity)
+            # Use regex to extract x, y, and speed — ignore z (corrupted bytes from Unity)
             x_match = re.search(r'"x"\s*:\s*([-\d.]+)', text)
             y_match = re.search(r'"y"\s*:\s*([-\d.]+)', text)
+            speed_match = re.search(r'"speed"\s*:\s*([-\d.]+)', text)
             if x_match and y_match:
                 x = float(x_match.group(1))
                 y = float(y_match.group(1))
+                speed = float(speed_match.group(1)) if speed_match else 0.35
                 self._enqueue_point(x, y, 0.0)
-                self.get_logger().info(f'Goal queued: ({x:.3f}, {y:.3f})')
+                self._enqueue_speed(speed)
+                self.get_logger().info(f'Goal queued: ({x:.3f}, {y:.3f}), speed: {speed:.2f} m/s')
             else:
                 self.get_logger().warn(f'Could not parse x/y from: {text[:80]}')
         except Exception as e:

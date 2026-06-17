@@ -34,7 +34,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from geometry_msgs.msg import Twist, Point, PoseStamped
-from std_msgs.msg import Bool, String
+from std_msgs.msg import Bool, String, Float32
 
 
 class GoalNavigationNode(Node):
@@ -76,6 +76,7 @@ class GoalNavigationNode(Node):
         self.pose_ready     = False
         self.goal           = None
         self.phase          = self.IDLE
+        self.current_waypoint_speed = 0.35
 
         # ── QoS ────────────────────────────────────────────────────
         sensor_qos = QoSProfile(
@@ -93,6 +94,7 @@ class GoalNavigationNode(Node):
         # ── Subscribers ────────────────────────────────────────────
         self.create_subscription(Point,       '/unity_clicked_point', self._on_goal, 10)
         self.create_subscription(PoseStamped, '/utlidar/robot_pose',  self._on_pose, sensor_qos)
+        self.create_subscription(Float32,     '/nav_waypoint_speed',  self._on_speed, 10)
 
         self.create_timer(0.05, self._loop)
 
@@ -122,6 +124,11 @@ class GoalNavigationNode(Node):
             f'robot at ({self.robot_x:.2f}, {self.robot_y:.2f})'
         )
         self._pub_status('NAVIGATING')
+
+    def _on_speed(self, msg: Float32):
+        """Receive per-waypoint speed from TCP bridge."""
+        self.current_waypoint_speed = msg.data
+        self.get_logger().debug(f'Speed updated: {self.current_waypoint_speed:.2f} m/s')
 
     # ── Control loop ───────────────────────────────────────────────
 
@@ -175,7 +182,7 @@ class GoalNavigationNode(Node):
                 self.get_logger().info(f'Drift {math.degrees(yaw_err):.1f}° — re-aligning')
                 return
             proximity = min(1.0, dist / 0.5)
-            vx = max(0.10, self.max_speed * proximity)
+            vx = max(0.10, self.current_waypoint_speed * proximity)
             # Also steer to maintain heading while driving
             wz = self._clamp(yaw_err * 1.5, -self.turn_speed * 0.3, self.turn_speed * 0.3)
             self._send(vx, wz)
