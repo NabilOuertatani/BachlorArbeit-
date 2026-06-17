@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-dynamic_gesture_handler.py — Transparent forwarder for sport API gestures.
+dynamic_gesture_handler.py — Gesture logging/monitoring node.
 
-Receives /api/sport_request from the TCP bridge and republishes unchanged
-to robot_api_bridge.py. Stateless; logs api_id for debugging only.
+Receives /api/sport_request from the TCP bridge and logs it for debugging.
+Does NOT republish — robot_api_bridge.py directly handles forwarding to UDP.
 
 Flow:
-    ros_tcp_bridge_server → /api/sport_request → HERE → robot_api_bridge → UDP
+    ros_tcp_bridge_server → /api/sport_request → robot_api_bridge → UDP
+
+This node just monitors and logs for debugging.
 
 Gesture IDs (any unlisted ID also passes through automatically):
     1001 Damp  1002 StandUp  1003 StandDown  1004 RecoveryStand
@@ -28,11 +30,8 @@ class DynamicGestureHandler(Node):
     def __init__(self):
         super().__init__('dynamic_gesture_handler')
 
-        # Publisher to forward gesture commands
-        self.gesture_pub = self.create_publisher(
-            Request, '/api/sport_request', 10)
-
         # Subscriber to receive gesture commands from Unity (via TCP bridge)
+        # NOTE: We do NOT republish — just log and let robot_api_bridge handle it
         self.create_subscription(
             Request,
             '/api/sport_request',
@@ -44,28 +43,26 @@ class DynamicGestureHandler(Node):
         self.get_logger().info('Dynamic Gesture Handler Started')
         self.get_logger().info('─────────────────────────────────────')
         self.get_logger().info('✓ Subscribes to: /api/sport_request')
-        self.get_logger().info('✓ Publishes to: /api/sport_request')
+        self.get_logger().info('✓ Logs & monitors gestures only (NO republish)')
+        self.get_logger().info('✓ robot_api_bridge handles actual forwarding')
         self.get_logger().info('✓ Accepts ANY gesture API ID dynamically')
         self.get_logger().info('✓ Does NOT handle movement (use goal_navigation_node)')
         self.get_logger().info('═══════════════════════════════════════')
 
     def _on_gesture_request(self, msg: Request):
         """
-        Receive and forward gesture commands dynamically.
-        No hardcoded sequences — just pass-through.
+        Monitor gesture commands for logging/debugging.
+        Do NOT republish — robot_api_bridge directly handles /api/sport_request.
         """
         try:
             api_id = msg.header.identity.api_id
             parameter = msg.parameter if msg.parameter else '{}'
 
-            # Log the gesture
+            # Log the gesture for debugging
             self._log_gesture_name(api_id, parameter)
 
-            # Forward to robot (via robot_api_bridge.py → UDP:29999)
-            self.gesture_pub.publish(msg)
-
             self.get_logger().info(
-                f'✓ Gesture forwarded: api_id={api_id}, param={parameter}'
+                f'✓ Gesture received: api_id={api_id}, param={parameter}'
             )
 
         except Exception as e:
@@ -93,22 +90,6 @@ class DynamicGestureHandler(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = DynamicGestureHandler()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = RaiseLegHighLevel()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

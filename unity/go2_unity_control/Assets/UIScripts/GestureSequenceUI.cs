@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using TMPro;
-using Unity.Robotics.ROSTCPConnector;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -506,27 +505,8 @@ previewText.text = string.Join(" → ", previewSteps);
 
     private void SendGestureCommand(int apiId)
     {
-        try
-        {
-            ROSConnection ros = ROSConnection.GetOrCreateInstance();
-            
-            // Register publisher if not already registered
-            // Topic matches what the Unitree Go2 expects
-            ros.RegisterPublisher<SportRequestMsg>("/api/sport/request");
-
-            SportRequestMsg msg = new SportRequestMsg();
-            msg.header.identity.api_id = apiId;
-            msg.parameter = "{}";
-
-            ros.Publish("/api/sport/request", msg);
-            Debug.Log($"[GestureSequenceUI] Published to /api/sport/request: api_id={apiId}");
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"[GestureSequenceUI] Failed to publish gesture: {e.Message}");
-            // Fallback to direct TCP
-            SendGestureViaTCP(apiId);
-        }
+        // Use direct TCP instead of ROS TCP Connector (which sends binary, not JSON)
+        SendGestureViaTCP(apiId);
     }
 
     private void SendGestureViaTCP(int apiId)

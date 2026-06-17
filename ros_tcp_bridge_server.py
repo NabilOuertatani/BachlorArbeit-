@@ -40,7 +40,7 @@ class TCPBridgeServer(Node):
         # Publishers for waypoints, speeds, and gestures
         self.waypoint_pub = self.create_publisher(Point, '/unity_clicked_point', 10)
         self.speed_pub = self.create_publisher(Float32, '/nav_waypoint_speed', 10)
-        self.gesture_pub = self.create_publisher(Request, '/api/sport_request', 10)
+        self.gesture_pub = self.create_publisher(Request, '/api/gesture/request', 10)  # Corrected: gestures go to /api/gesture/request, not sport
 
         self.host = '0.0.0.0'
         self.port = 10000
@@ -132,8 +132,13 @@ class TCPBridgeServer(Node):
                     break
                 msg_len = struct.unpack('>I', header)[0]
 
-                if msg_len == 0 or msg_len > 65535:
-                    self.get_logger().warn(f'Suspicious msg_len={msg_len}, dropping')
+                # Skip ROS TCP Connector handshake messages (msg_len=0 or > 65535)
+                if msg_len == 0:
+                    self.get_logger().debug(f'ROS handshake/keepalive from {addr}, skipping')
+                    continue
+                
+                if msg_len > 65535:
+                    self.get_logger().warn(f'Message too large: {msg_len}, dropping connection')
                     break
 
                 payload = self._recv_exact(conn, msg_len)

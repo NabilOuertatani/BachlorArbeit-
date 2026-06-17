@@ -24,7 +24,7 @@ public class SportRequestMsg : Message
 [System.Serializable]
 public class RequestHeader : Message
 {
-    public const string k_RosMessageName = "";
+    public const string k_RosMessageName = "unitree_api/RequestHeader";
     public override string RosMessageName => k_RosMessageName;
 
     public RequestIdentity identity;
@@ -38,7 +38,7 @@ public class RequestHeader : Message
 [System.Serializable]
 public class RequestIdentity : Message
 {
-    public const string k_RosMessageName = "";
+    public const string k_RosMessageName = "unitree_api/RequestIdentity";
     public override string RosMessageName => k_RosMessageName;
 
     public int api_id;

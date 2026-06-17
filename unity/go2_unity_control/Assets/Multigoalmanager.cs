@@ -95,7 +95,7 @@ public class MultiGoalManager : MonoBehaviour
         // Auto-find SpeedSelector if not assigned
         if (speedSelector == null)
         {
-            speedSelector = FindObjectOfType<SpeedSelector>();
+            speedSelector = FindFirstObjectByType<SpeedSelector>();
             if (speedSelector != null)
                 Debug.Log("[MultiGoalManager] Auto-found SpeedSelector");
             else
@@ -403,7 +403,7 @@ public class MultiGoalManager : MonoBehaviour
 
         Debug.Log("[MultiGoalManager] Add Waypoints button pressed!");
         
-        GestureSequenceUI gestureUI = FindObjectOfType<GestureSequenceUI>();
+        GestureSequenceUI gestureUI = FindFirstObjectByType<GestureSequenceUI>();
         if (gestureUI == null)
         {
             Debug.LogError("[MultiGoalManager] GestureSequenceUI not found!");

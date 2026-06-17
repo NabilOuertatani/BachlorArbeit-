@@ -8,7 +8,7 @@ public class SceneSwitcher : MonoBehaviour
     void Start()
     {
         // Find MainUI canvas (should be in MainUI scene)
-        mainUICanvas = FindObjectOfType<Canvas>();
+        mainUICanvas = FindFirstObjectByType<Canvas>();
     }
 
     public void GoToUnityInterface()

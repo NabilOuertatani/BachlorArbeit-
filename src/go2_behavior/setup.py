@@ -36,8 +36,9 @@ setup(
             'raise_leg = go2_behavior.raise_leg:main',
             'raise_leg_highlevel = go2_behavior.raise_leg_highlevel:main',
             'goal_navigation_node = go2_behavior.goal_navigation_node:main',
-            'pose_forwarder       = go2_behavior.PoseForwarder:main',
-            'cloud_forwarder      = go2_behavior.CloudForwarder:main',
+            'pose_forwarder       = go2_behavior.pose_forwarder:main',
+            'cloud_forwarder      = go2_behavior.cloud_forwarder:main',
+            'dynamic_gesture_handler = go2_behavior.dynamic_gesture_handler:main',
         ],
     },
 )

@@ -44,20 +44,46 @@ class RobotApiBridge(Node):
         
         self.get_logger().info(f'Robot API Bridge initialized (target: {self.robot_ip}:{self.robot_port})')
 
-        # Subscriber
+        # Subscribers for both movement and gestures
         self.create_subscription(
             Request,
             '/api/sport_request',
-            self._on_request,
+            self._on_sport_request,
+            10
+        )
+        self.create_subscription(
+            Request,
+            '/api/gesture/request',
+            self._on_gesture_request,
             10
         )
 
-    def _on_request(self, msg: Request):
+    def _on_sport_request(self, msg: Request):
+        """Handle movement /api/sport_request messages."""
+        self._send_to_robot(msg, "SPORT")
+
+    def _on_gesture_request(self, msg: Request):
+       """Handle gesture /api/gesture/request messages."""
+       import time
+       # Robot must be in sport mode to execute gestures
+       # Send RecoveryStand first to ensure correct mode
+       wake_cmd = {'api_id': 1004, 'parameter': '{}'}
+       wake_payload = json.dumps(wake_cmd).encode('utf-8')
+       self.sock.sendto(wake_payload, (self.robot_ip, self.robot_port))
+       self.get_logger().info('[GESTURE] Pre-wake: Sent RecoveryStand (1004)')
+       time.sleep(2.0)  # Wait for robot to enter sport mode
+       # Now send the actual gesture
+       self._send_to_robot(msg, "GESTURE")
+
+    def _send_to_robot(self, msg: Request, msg_type: str):
         """Handle incoming /api/sport_request messages."""
         try:
             # Extract API ID and parameters
             api_id = msg.header.identity.api_id if hasattr(msg, 'header') else 1008
             param_str = msg.parameter if hasattr(msg, 'parameter') else '{}'
+            
+            # Log receipt
+            self.get_logger().info(f'[{msg_type}] [RECEIVED] API ID: {api_id}, param: {param_str}')
             
             # Build command JSON
             command = {
@@ -67,12 +93,13 @@ class RobotApiBridge(Node):
             
             # Serialize and send
             payload = json.dumps(command).encode('utf-8')
-            self.sock.sendto(payload, (self.robot_ip, self.robot_port))
+            self.get_logger().info(f'[{msg_type}] [SENDING] UDP to {self.robot_ip}:{self.robot_port} - Payload: {payload.decode("utf-8")}')
             
-            self.get_logger().info(f'Sent to robot - API ID: {api_id}, param: {param_str}')
+            bytes_sent = self.sock.sendto(payload, (self.robot_ip, self.robot_port))
+            self.get_logger().info(f'[{msg_type}] [SUCCESS] Sent {bytes_sent} bytes to robot - API ID: {api_id}')
             
         except Exception as e:
-            self.get_logger().error(f'Error sending to robot: {e}')
+            self.get_logger().error(f'[{msg_type}] [ERROR] Failed to send: {e}', exc_info=True)
 
 
 def main(args=None):
@@ -82,9 +109,9 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
-    except Exception:
-        pass
+        logger.info('Interrupted by user')
+    except Exception as e:
+        logger.error(f'Error in main: {e}')
     finally:
         try:
             node.destroy_node()
@@ -94,24 +121,6 @@ def main(args=None):
             rclpy.shutdown()
         except:
             pass
-
-
-if __name__ == '__main__':
-    main()
-
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = RobotApiBridge()
-    
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
 
 
 if __name__ == '__main__':
