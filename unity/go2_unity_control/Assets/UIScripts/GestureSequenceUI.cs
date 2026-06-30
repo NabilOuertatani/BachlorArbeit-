@@ -263,22 +263,7 @@ previewText.text = string.Join(" → ", previewSteps);
             newCard.SetActive(true);
             newCard.name = "SavedCard_" + index;
 
-            // Create display string from sequence
-            string displayText = sequences[i].name + ": ";
-            List<string> stepNames = new List<string>();
-            foreach (GestureDataManager.SavedStep step in sequences[i].steps)
-            {
-                // Only show waypoint count for "Move" actions with waypoints
-                if (step.stepName == "Move" && step.waypoints != null)
-                {
-                    stepNames.Add(step.stepName + "(" + step.waypoints.Count + "wp)");
-                }
-                else
-                {
-                    stepNames.Add(step.stepName);
-                }
-            }
-            displayText += string.Join(" → ", stepNames);
+            string displayText = sequences[i].name;
 
             TMP_Text cardText = newCard.GetComponentInChildren<TMP_Text>();
             cardText.text = displayText;
@@ -550,8 +535,8 @@ previewText.text = string.Join(" → ", previewSteps);
         {
             "raise hand"  => 1016,  // Hello (wave FR leg)
             "stand up"    => 1002,  // StandUp
-            "sit down"    => 1003,  // StandDown
-            "jump"        => 1022,  // Dance1 (has jump-like motion)
+            "sit down"    => 1009,  // SitDown
+            "jump"        => 1031,  // Jump
             "stretch"     => 1017,  // Stretch
             "dance"       => 1022,  // Dance1
             _             => -1     // Unknown gesture

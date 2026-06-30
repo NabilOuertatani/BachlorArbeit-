@@ -1,71 +1,36 @@
 {
     "sequences": [
         {
-            "name": "Sequence 3",
+            "name": "Sequence 1",
             "steps": [
                 {
-                    "stepName": "Move",
-                    "waypoints": [
-                        {
-                            "x": 0.5044140815734863,
-                            "y": -1.399999976158142,
-                            "z": 2.686209201812744,
-                            "speed": 0.4000000059604645
-                        },
-                        {
-                            "x": 0.5517139434814453,
-                            "y": -1.399999976158142,
-                            "z": 0.6645689010620117,
-                            "speed": 0.20000000298023225
-                        }
-                    ]
+                    "stepName": "Sit down"
+                },
+                {
+                    "stepName": "Sit down"
+                },
+                {
+                    "stepName": "Sit down"
+                },
+                {
+                    "stepName": "Sit down"
                 }
             ]
         },
         {
-            "name": "Sequence 4",
+            "name": "Sequence 2",
             "steps": [
                 {
-                    "stepName": "Raise Hand"
+                    "stepName": "Stand up"
                 },
                 {
-                    "stepName": "Move",
-                    "waypoints": [
-                        {
-                            "x": 0.31864315271377566,
-                            "y": 0.7330800294876099,
-                            "z": 0.7914607524871826,
-                            "speed": 0.4000000059604645
-                        },
-                        {
-                            "x": 0.07429695129394531,
-                            "y": -1.399999976158142,
-                            "z": 4.405808448791504,
-                            "speed": 0.800000011920929
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "name": "Sequence 4",
-            "steps": [
-                {
-                    "stepName": "Move",
-                    "waypoints": [
-                        {
-                            "x": 0.5265235900878906,
-                            "y": -1.399999976158142,
-                            "z": 6.558331489562988,
-                            "speed": 0.4000000059604645
-                        }
-                    ]
+                    "stepName": "Stand up"
                 },
                 {
-                    "stepName": "Jump"
+                    "stepName": "Stand up"
                 },
                 {
-                    "stepName": "Raise Hand"
+                    "stepName": "Stand up"
                 }
             ]
         }
