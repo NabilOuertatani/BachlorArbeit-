@@ -1,33 +1,32 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
+/// <summary>
+/// Toggles between the Config screen and the Dog/Waypoints panel.
+/// Single-scene setup — no more additive scene loading/unloading.
+/// </summary>
 public class SceneSwitcher : MonoBehaviour
 {
-    private Canvas mainUICanvas;
+    [Header("Panels to toggle")]
+    public GameObject configScene;   // "Configscene" under MainPanel
+    public GameObject dogPannel;     // "DogPannel" under MainPanel
 
-    void Start()
-    {
-        // Find MainUI canvas (should be in MainUI scene)
-        mainUICanvas = FindFirstObjectByType<Canvas>();
-    }
-
+    /// <summary>Hide Config screen, show the Dog/Waypoints panel.</summary>
     public void GoToUnityInterface()
     {
-        // Hide MainUI canvas
-        if (mainUICanvas != null)
-            mainUICanvas.enabled = false;
-        
-        // Load UnityInterface additively on top
-      //  SceneManager.LoadScene("UnityInterface", LoadSceneMode.Additive);
+        if (configScene != null)
+            configScene.SetActive(false);
+
+        if (dogPannel != null)
+            dogPannel.SetActive(true);
     }
 
+    /// <summary>Hide the Dog/Waypoints panel, show Config screen again.</summary>
     public void GoToMainUI()
     {
-        // Show MainUI canvas again
-        if (mainUICanvas != null)
-            mainUICanvas.enabled = true;
-        
-        // Unload UnityInterface scene
-        //SceneManager.UnloadSceneAsync("UnityInterface");
+        if (configScene != null)
+            configScene.SetActive(true);
+
+        if (dogPannel != null)
+            dogPannel.SetActive(false);
     }
 }
