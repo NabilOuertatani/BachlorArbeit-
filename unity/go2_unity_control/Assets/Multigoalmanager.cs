@@ -109,6 +109,17 @@ public class MultiGoalManager : MonoBehaviour
             Debug.Log("[MultiGoalManager] Subscribed to OnSpeedConfirmed event");
         }
 
+        if (addWaypointsButton == null)
+        {
+            GameObject addWaypointsObject = GameObject.Find("AddNewConfigButton");
+            if (addWaypointsObject != null)
+            {
+                addWaypointsButton = addWaypointsObject.GetComponent<Button>();
+                if (addWaypointsButton != null)
+                    Debug.Log("[MultiGoalManager] Auto-found AddNewConfigButton");
+            }
+        }
+
         walkButton.onClick.AddListener(OnWalkPressed);
         clearButton.onClick.AddListener(OnClearPressed);
         
