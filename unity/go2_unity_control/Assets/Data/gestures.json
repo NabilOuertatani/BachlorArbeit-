@@ -1,38 +1,3 @@
 {
-    "sequences": [
-        {
-            "name": "Sequence 1",
-            "steps": [
-                {
-                    "stepName": "Sit down"
-                },
-                {
-                    "stepName": "Sit down"
-                },
-                {
-                    "stepName": "Sit down"
-                },
-                {
-                    "stepName": "Sit down"
-                }
-            ]
-        },
-        {
-            "name": "Sequence 2",
-            "steps": [
-                {
-                    "stepName": "Stand up"
-                },
-                {
-                    "stepName": "Stand up"
-                },
-                {
-                    "stepName": "Stand up"
-                },
-                {
-                    "stepName": "Stand up"
-                }
-            ]
-        }
-    ]
+    "sequences": []
 }

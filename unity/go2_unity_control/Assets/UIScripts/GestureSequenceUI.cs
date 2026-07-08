@@ -32,7 +32,8 @@ public class GestureSequenceUI : MonoBehaviour
     [Header("Screens")]
     public GameObject homeScreen;
     public GameObject configScreen;
-    
+    public GameObject dogPanel;  // "DogPannel" — robot controls, should only show on the config screen
+    public GameObject[] sceneEnvironmentObjects;  // Walls, NavMesh_Ground — 3D scene, should only show on the config screen
 
     [Header("Config Screen")]
     public TMP_Dropdown gestureStepDropdown;
@@ -51,6 +52,12 @@ public class GestureSequenceUI : MonoBehaviour
 
     void Start()
     {
+        // Establish a known screen state — the scene may be saved with both
+        // homeScreen and configScreen active, which lets the (invisible, but
+        // still raycastable) home screen panel swallow clicks meant for the
+        // 3D floor while the config screen is shown.
+        ShowHome();
+
         // Ensure GestureDataManager exists
         if (GestureDataManager.Instance == null)
         {
@@ -67,18 +74,60 @@ public class GestureSequenceUI : MonoBehaviour
     {
         homeScreen.SetActive(true);
         configScreen.SetActive(false);
+        if (dogPanel != null) dogPanel.SetActive(false);
+        SetSceneEnvironmentActive(false);
     }
 
     public void ShowConfig()
     {
         homeScreen.SetActive(false);
         configScreen.SetActive(true);
+        if (dogPanel != null) dogPanel.SetActive(true);
+        SetSceneEnvironmentActive(true);
+    }
+
+    private void SetSceneEnvironmentActive(bool active)
+    {
+        if (sceneEnvironmentObjects == null) return;
+        foreach (GameObject go in sceneEnvironmentObjects)
+            if (go != null) go.SetActive(active);
     }
 
     public void AddStep()
     {
         string selectedStep = gestureStepDropdown.options[gestureStepDropdown.value].text;
         AddStepToUI(selectedStep);
+    }
+
+    /// <summary>
+    /// Called by the "+ Add Waypoints" button.
+    /// Creates a "Move" step (regardless of dropdown selection) AND makes sure
+    /// floor-click input is enabled, so the user can immediately start clicking
+    /// the floor to place waypoints without any extra setup step.
+    /// </summary>
+    public void AddWaypointsStep()
+    {
+        Debug.Log("[GestureSequenceUI] AddWaypointsStep() called — creating Move step and enabling floor clicks");
+
+        // Always create a "Move" step for waypoint collection,
+        // regardless of what's currently selected in the gesture dropdown.
+        AddStepToUI("Move");
+
+        // Make sure the robot scene is available and floor clicking is enabled
+        // so the user can place waypoints right away.
+        RobotBridge bridge = RobotBridge.Instance != null
+            ? RobotBridge.Instance
+            : FindFirstObjectByType<RobotBridge>();
+
+        if (bridge != null)
+        {
+            bridge.EnableInput();
+            Debug.Log("[GestureSequenceUI] Floor click input enabled via RobotBridge");
+        }
+        else
+        {
+            Debug.LogWarning("[GestureSequenceUI] RobotBridge not found — cannot enable floor input!");
+        }
     }
 
     public void AddWaypoints()
@@ -140,19 +189,19 @@ public class GestureSequenceUI : MonoBehaviour
     }
 
     private void AddStepToUI(string stepName)
-{
-    GestureStepData stepData = new GestureStepData(stepName);
+    {
+        GestureStepData stepData = new GestureStepData(stepName);
 
-    sequenceSteps.Add(stepData);
+        sequenceSteps.Add(stepData);
 
-    GameObject newStep = Instantiate(stepItemTemplate, sequenceListParent);
-    newStep.SetActive(true);
+        GameObject newStep = Instantiate(stepItemTemplate, sequenceListParent);
+        newStep.SetActive(true);
 
-    TMP_Text stepText = newStep.GetComponentInChildren<TMP_Text>();
-    stepText.text = sequenceSteps.Count + ". " + stepName;
+        TMP_Text stepText = newStep.GetComponentInChildren<TMP_Text>();
+        stepText.text = sequenceSteps.Count + ". " + stepName;
 
-    UpdatePreview();
-}
+        UpdatePreview();
+    }
 
     private void UpdatePreview()
     {
@@ -166,12 +215,12 @@ public class GestureSequenceUI : MonoBehaviour
 
         List<string> previewSteps = new List<string>();
 
-foreach (GestureStepData step in sequenceSteps)
-{
-    previewSteps.Add(step.stepName);
-}
+        foreach (GestureStepData step in sequenceSteps)
+        {
+            previewSteps.Add(step.stepName);
+        }
 
-previewText.text = string.Join(" → ", previewSteps);
+        previewText.text = string.Join(" → ", previewSteps);
     }
 
     public void SaveSequence()

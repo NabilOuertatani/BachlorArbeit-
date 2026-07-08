@@ -47,6 +47,9 @@ public class MultiGoalManager : MonoBehaviour
     public float scaleX = 2.0f;   // NavMesh_Ground scale X
     public float scaleZ = 2.0f;   // NavMesh_Ground scale Z
 
+    [Header("Floor Click Settings")]
+    public LayerMask floorLayerMask = ~0; // Everything by default — narrow this to the floor's layer if you have overlapping colliders
+
     [Header("Waypoint visuals")]
     public Color pendingColor = new Color(1f, 0.8f, 0f);
     public Color activeColor  = new Color(0f, 1f, 0.4f);
@@ -110,15 +113,8 @@ public class MultiGoalManager : MonoBehaviour
         }
 
         if (addWaypointsButton == null)
-        {
-            GameObject addWaypointsObject = GameObject.Find("AddNewConfigButton");
-            if (addWaypointsObject != null)
-            {
-                addWaypointsButton = addWaypointsObject.GetComponent<Button>();
-                if (addWaypointsButton != null)
-                    Debug.Log("[MultiGoalManager] Auto-found AddNewConfigButton");
-            }
-        }
+            Debug.LogWarning("[MultiGoalManager] addWaypointsButton is not assigned in the Inspector — " +
+                              "waypoints won't be saved to the Move step until you wire a button to it.");
 
         walkButton.onClick.AddListener(OnWalkPressed);
         clearButton.onClick.AddListener(OnClearPressed);
@@ -195,6 +191,39 @@ public class MultiGoalManager : MonoBehaviour
 
     // ── Waypoint collection ────────────────────────────────────────
 
+    /// <summary>
+    /// Raycasts from the given screen position and, if it hits the floor,
+    /// adds a waypoint there. Returns true if a waypoint was added.
+    /// Call this directly from anywhere (a button, another script, a hotkey)
+    /// to collect floor-click waypoints — independent of mouse input or any other UI wiring.
+    /// </summary>
+    public bool TryAddWaypointAtScreenPosition(Vector3 screenPosition)
+    {
+        if (sceneCamera == null)
+        {
+            Debug.LogWarning("[MultiGoalManager] TryAddWaypointAtScreenPosition — sceneCamera is null!");
+            return false;
+        }
+
+        Debug.Log($"[MultiGoalManager] Screen size: {Screen.width}x{Screen.height}, Camera viewport rect: {sceneCamera.rect}");
+
+        Ray ray = sceneCamera.ScreenPointToRay(screenPosition);
+        if (!Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, floorLayerMask))
+        {
+            Debug.Log("[MultiGoalManager] Floor raycast missed at screen pos " + screenPosition);
+            return false;
+        }
+
+        Debug.Log("[MultiGoalManager] Floor raycast hit: " + hit.collider.name + " at " + hit.point);
+
+        AddWaypoint(hit.point); // reuses the existing public AddWaypoint(Vector3)
+
+        if (speedSelector != null)
+            speedSelector.Show(_waypoints.Count - 1);
+
+        return true;
+    }
+
     void TryAddWaypoint()
     {
         if (sceneCamera == null) return;
@@ -204,70 +233,7 @@ public class MultiGoalManager : MonoBehaviour
             UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
             return;
 
-        Ray ray = sceneCamera.ScreenPointToRay(Input.mousePosition);
-        if (!Physics.Raycast(ray, out RaycastHit hit)) return;
-
-        Vector3 unityPos = hit.point;
-
-        // Unity → ROS: divide by scale to get real metres
-        float rosX =  unityPos.z / scaleZ;
-        float rosY = -unityPos.x / scaleX;
-
-        // Create placeholder waypoint (speed will be set after user selection)
-        WaypointWithSpeed wp = new WaypointWithSpeed(
-            unityPos,
-            new Vector3(rosX, rosY, 0),
-            0.4f  // Default to normal speed
-        );
-
-        _waypoints.Add(wp);
-
-        // Spawn marker with default color
-        GameObject m = waypointParent != null
-            ? Instantiate(waypointPrefab, waypointParent)
-            : Instantiate(waypointPrefab);
-
-        m.transform.position = new Vector3(unityPos.x, 0.15f, unityPos.z);
-        SetMarkerColor(m, pendingColor);
-
-        // Number label
-        GameObject labelObj = new GameObject("Label");
-        labelObj.transform.SetParent(m.transform);
-        labelObj.transform.localPosition = Vector3.up * 0.4f;
-        var tmp       = labelObj.AddComponent<TextMeshPro>();
-        tmp.text      = _markers.Count.ToString();
-        tmp.fontSize  = 3;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color     = Color.white;
-
-        // Speed label (initially empty, will update when speed is selected)
-        GameObject speedLabelObj = new GameObject("SpeedLabel");
-        speedLabelObj.transform.SetParent(m.transform);
-        speedLabelObj.transform.localPosition = Vector3.up * 0.6f;
-        var speedTmp = speedLabelObj.AddComponent<TextMeshPro>();
-        speedTmp.text = "0.4 m/s";
-        speedTmp.fontSize = 2;
-        speedTmp.alignment = TextAlignmentOptions.Center;
-        speedTmp.color = Color.white;
-        speedLabelObj.name = "SpeedLabel";
-
-        _markers.Add(m);
-        walkButton.interactable = true;
-        SetStatus(_markers.Count + " waypoint(s) — select speed and press ADD POINTS");
-
-        Debug.Log("[MultiGoalManager] Waypoint " + _markers.Count +
-                  " placed at Unity(" + unityPos.x.ToString("F2") + ", " + unityPos.z.ToString("F2") + ")" +
-                  " → ROS(" + rosX.ToString("F2") + ", " + rosY.ToString("F2") + ")");
-
-        // Show speed selector for this waypoint
-        if (speedSelector != null)
-        {
-            speedSelector.Show(_waypoints.Count - 1);
-        }
-        else
-        {
-            Debug.LogWarning("[MultiGoalManager] SpeedSelector not assigned!");
-        }
+        TryAddWaypointAtScreenPosition(Input.mousePosition);
     }
 
     // ── Walk ───────────────────────────────────────────────────────
