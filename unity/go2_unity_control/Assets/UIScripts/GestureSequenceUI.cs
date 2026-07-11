@@ -45,6 +45,25 @@ public class GestureSequenceUI : MonoBehaviour
     public Transform savedSequencesPanel;
     public GameObject savedSequenceCardTemplate;
 
+    [Header("Redesign — Home")]
+    public GestureCard gestureCardPrefab;
+    public TMP_Text homeCountText;          // mono "6 SAVED" top-right
+    public TMP_Text filterAllText;          // "All 6" chip label
+    public Button filterAllButton;
+    public Button filterRecentButton;
+    public Button filterIdleButton;
+    public Button searchButton;
+    public TMP_InputField searchInput;
+
+    [Header("Redesign — Config")]
+    public TMP_Text breadcrumbNameText;     // current gesture name in the breadcrumb
+    public GameObject unsavedChip;          // amber "unsaved" chip
+
+    private enum HomeFilter { All, Recent, Idle }
+    private HomeFilter homeFilter = HomeFilter.All;
+    private string searchQuery = "";
+    private int runningIndex = -1;          // saved-sequence index currently executing (-1 = none)
+
     private readonly List<GestureStepData> sequenceSteps = new List<GestureStepData>();
     private readonly List<string> savedSequences = new List<string>();
 
@@ -65,6 +84,18 @@ public class GestureSequenceUI : MonoBehaviour
             go.AddComponent<GestureDataManager>();
             Debug.Log("[GestureSequenceUI] Created GestureDataManager on startup");
         }
+
+        // Wire the Home filter chips and search (references set by RedesignBuilder)
+        if (filterAllButton != null)    filterAllButton.onClick.AddListener(SetFilterAll);
+        if (filterRecentButton != null) filterRecentButton.onClick.AddListener(SetFilterRecent);
+        if (filterIdleButton != null)   filterIdleButton.onClick.AddListener(SetFilterIdle);
+        if (searchButton != null)       searchButton.onClick.AddListener(ToggleSearch);
+        if (searchInput != null)
+        {
+            searchInput.onValueChanged.AddListener(OnSearchChanged);
+            searchInput.gameObject.SetActive(false);
+        }
+        RefreshFilterChips();
 
         // Load and display saved sequences (with delay to ensure manager is ready)
         Invoke("DisplaySavedSequences", 0.1f);
@@ -166,6 +197,7 @@ public class GestureSequenceUI : MonoBehaviour
         // Add waypoints to the current Move step
         lastStep.waypoints.Clear();
         lastStep.waypoints.AddRange(waypointsFromBridge);
+        MarkUnsaved();
 
         Debug.Log("[GestureSequenceUI] Added " + waypointsFromBridge.Count + " waypoints to step: " + lastStep.stepName);
 
@@ -200,7 +232,24 @@ public class GestureSequenceUI : MonoBehaviour
         TMP_Text stepText = newStep.GetComponentInChildren<TMP_Text>();
         stepText.text = sequenceSteps.Count + ". " + stepName;
 
+        MarkUnsaved();
         UpdatePreview();
+    }
+
+    /// <summary>Shows the amber "unsaved" chip in the Configure breadcrumb.</summary>
+    private void MarkUnsaved()
+    {
+        if (unsavedChip != null) unsavedChip.SetActive(true);
+    }
+
+    /// <summary>All waypoint positions of the sequence currently being edited (across Move steps).</summary>
+    public List<Vector3> GetAllWaypointPositions()
+    {
+        var positions = new List<Vector3>();
+        foreach (GestureStepData step in sequenceSteps)
+            foreach (WaypointWithSpeed wp in step.waypoints)
+                positions.Add(wp.unityPosition);
+        return positions;
     }
 
     private void UpdatePreview()
@@ -241,7 +290,18 @@ public class GestureSequenceUI : MonoBehaviour
 
         // Create saved sequence with full step data (including waypoints and speeds)
         GestureDataManager.SavedSequence savedSeq = new GestureDataManager.SavedSequence();
-        savedSeq.name = "Sequence " + (GestureDataManager.Instance.savedSequences.Count + 1);
+        if (editingIndex >= 0 && editingIndex < GestureDataManager.Instance.savedSequences.Count)
+        {
+            // Keep the name and id of the sequence being edited
+            GestureDataManager.SavedSequence existing = GestureDataManager.Instance.savedSequences[editingIndex];
+            savedSeq.name = existing.name;
+            savedSeq.id = existing.id;
+        }
+        else
+        {
+            savedSeq.name = "Sequence " + (GestureDataManager.Instance.savedSequences.Count + 1);
+        }
+        savedSeq.EnsureId();
 
         foreach (GestureStepData step in sequenceSteps)
         {
@@ -261,6 +321,16 @@ public class GestureSequenceUI : MonoBehaviour
             
             savedSeq.steps.Add(savedStep);
         }
+
+        // Screenshot-on-save thumbnail of the waypoint path (see ThumbnailCapture)
+        if (ThumbnailCapture.Instance != null)
+        {
+            string thumbPath = ThumbnailCapture.Instance.Capture(savedSeq.id, GetAllWaypointPositions());
+            if (!string.IsNullOrEmpty(thumbPath))
+                savedSeq.thumbnailPath = thumbPath;
+        }
+
+        if (unsavedChip != null) unsavedChip.SetActive(false);
 
         // Save to persistent storage (with full waypoint data AND speeds!)
         if (editingIndex >= 0)
@@ -293,73 +363,61 @@ public class GestureSequenceUI : MonoBehaviour
         {
             if (child.gameObject == savedSequenceCardTemplate) continue;
             if (child.gameObject.name == "AddNewConfigButton") continue;
-            if (child.gameObject.name == "ExistingConfigurationsLabel") continue;
-            if (child.gameObject.name == "RobotstatusPanel") continue;
 
             Destroy(child.gameObject);
         }
 
         // Load from persistent storage
-        List<GestureDataManager.SavedSequence> sequences = (GestureDataManager.Instance != null) 
-            ? GestureDataManager.Instance.savedSequences 
+        List<GestureDataManager.SavedSequence> sequences = (GestureDataManager.Instance != null)
+            ? GestureDataManager.Instance.savedSequences
             : new List<GestureDataManager.SavedSequence>();
-        
+
+        if (homeCountText != null)
+            homeCountText.text = sequences.Count + " SAVED";
+        if (filterAllText != null)
+            filterAllText.text = "All " + sequences.Count;
+
         for (int i = 0; i < sequences.Count; i++)
         {
             int index = i;
+            GestureDataManager.SavedSequence seq = sequences[i];
 
-            GameObject newCard = Instantiate(savedSequenceCardTemplate, savedSequencesPanel);
-            newCard.SetActive(true);
-            newCard.name = "SavedCard_" + index;
+            if (!PassesHomeFilter(seq, index, sequences)) continue;
 
-            string displayText = sequences[i].name;
-
-            TMP_Text cardText = newCard.GetComponentInChildren<TMP_Text>();
-            cardText.text = displayText;
-
-            // Edit button (main card)
-            Button button = newCard.GetComponent<Button>();
-            if (button != null)
+            if (gestureCardPrefab != null)
             {
-                button.onClick.RemoveAllListeners();
-                button.onClick.AddListener(() => EditSavedSequence(index));
+                GestureCard card = Instantiate(gestureCardPrefab, savedSequencesPanel);
+                card.gameObject.SetActive(true);
+                card.gameObject.name = "SavedCard_" + index;
+
+                GestureCard.Status status = (index == runningIndex)
+                    ? GestureCard.Status.Running
+                    : (seq.edited ? GestureCard.Status.Edited : GestureCard.Status.Ready);
+
+                card.Bind(
+                    seq.name,
+                    BuildMetaLine(seq),
+                    ThumbnailCapture.ResolvePath(seq.thumbnailPath, seq.id),
+                    status,
+                    onRun: () => RunSavedSequence(index),
+                    onEdit: () => EditSavedSequence(index),
+                    onDelete: () => DeleteSequence(index));
             }
-
-            // Add delete button as child
-            GameObject deleteButtonObj = new GameObject("DeleteButton");
-            deleteButtonObj.transform.SetParent(newCard.transform);
-            deleteButtonObj.transform.SetAsLastSibling();
-            
-            RectTransform deleteRect = deleteButtonObj.AddComponent<RectTransform>();
-            deleteRect.anchorMin = new Vector2(1, 1);  // Top-right
-            deleteRect.anchorMax = new Vector2(1, 1);
-            deleteRect.offsetMin = new Vector2(-12, -12);
-            deleteRect.offsetMax = new Vector2(0, -1);
-
-            Image deleteImg = deleteButtonObj.AddComponent<Image>();
-            deleteImg.color = new Color(0, 0, 0);  // Red
-
-            Button deleteBtn = deleteButtonObj.AddComponent<Button>();
-            deleteBtn.targetGraphic = deleteImg;
-
-            // Delete button text
-            GameObject deleteTextObj = new GameObject("Text");
-            deleteTextObj.transform.SetParent(deleteButtonObj.transform);
-            RectTransform deleteTextRect = deleteTextObj.AddComponent<RectTransform>();
-            deleteTextRect.anchorMin = Vector2.zero;
-            deleteTextRect.anchorMax = Vector2.one;
-            deleteTextRect.offsetMin = Vector2.zero;
-            deleteTextRect.offsetMax = Vector2.zero;
-
-            TMP_Text deleteText = deleteTextObj.AddComponent<TextMeshProUGUI>();
-            deleteText.text = "X";
-            deleteText.fontSize = 8;
-            deleteText.alignment = TextAlignmentOptions.Center;
-            deleteText.color = Color.white;
-
-            // Delete button click handler
-            int indexCopy = index;
-            deleteBtn.onClick.AddListener(() => DeleteSequence(indexCopy));
+            else if (savedSequenceCardTemplate != null)
+            {
+                // Legacy fallback if the redesigned prefab isn't wired
+                GameObject newCard = Instantiate(savedSequenceCardTemplate, savedSequencesPanel);
+                newCard.SetActive(true);
+                newCard.name = "SavedCard_" + index;
+                TMP_Text cardText = newCard.GetComponentInChildren<TMP_Text>();
+                if (cardText != null) cardText.text = seq.name;
+                Button button = newCard.GetComponent<Button>();
+                if (button != null)
+                {
+                    button.onClick.RemoveAllListeners();
+                    button.onClick.AddListener(() => EditSavedSequence(index));
+                }
+            }
         }
 
         Transform addButton = savedSequencesPanel.Find("AddNewConfigButton");
@@ -367,6 +425,99 @@ public class GestureSequenceUI : MonoBehaviour
         {
             addButton.SetAsLastSibling();
         }
+    }
+
+    /// <summary>Mono metadata line for a card, e.g. "3 WAYPOINTS · SIT DOWN".</summary>
+    private static string BuildMetaLine(GestureDataManager.SavedSequence seq)
+    {
+        int waypointCount = 0;
+        string behavior = null;
+        foreach (GestureDataManager.SavedStep step in seq.steps)
+        {
+            if (step.waypoints != null) waypointCount += step.waypoints.Count;
+            if (behavior == null && step.stepName != "Move")
+                behavior = step.stepName;
+        }
+        return waypointCount + " WAYPOINTS · " + (behavior ?? "Move").ToUpperInvariant();
+    }
+
+    private bool PassesHomeFilter(GestureDataManager.SavedSequence seq, int index,
+                                  List<GestureDataManager.SavedSequence> all)
+    {
+        if (!string.IsNullOrEmpty(searchQuery) &&
+            (seq.name == null || seq.name.ToLowerInvariant().IndexOf(searchQuery.ToLowerInvariant()) < 0))
+            return false;
+
+        switch (homeFilter)
+        {
+            case HomeFilter.Recent:
+                // The three most recently saved sequences
+                int newer = 0;
+                foreach (GestureDataManager.SavedSequence other in all)
+                    if (other != seq && other.savedAt > seq.savedAt) newer++;
+                return newer < 3;
+            case HomeFilter.Idle:
+                return index != runningIndex;
+            default:
+                return true;
+        }
+    }
+
+    // ── Filter chip / search handlers (wired to the Home chip row) ────────
+
+    public void SetFilterAll()    { homeFilter = HomeFilter.All;    RefreshFilterChips(); DisplaySavedSequences(); }
+    public void SetFilterRecent() { homeFilter = HomeFilter.Recent; RefreshFilterChips(); DisplaySavedSequences(); }
+    public void SetFilterIdle()   { homeFilter = HomeFilter.Idle;   RefreshFilterChips(); DisplaySavedSequences(); }
+
+    public void ToggleSearch()
+    {
+        if (searchInput == null) return;
+        bool show = !searchInput.gameObject.activeSelf;
+        searchInput.gameObject.SetActive(show);
+        if (show)
+        {
+            searchInput.text = "";
+            searchInput.Select();
+            searchInput.ActivateInputField();
+        }
+        else
+        {
+            searchQuery = "";
+            DisplaySavedSequences();
+        }
+    }
+
+    public void OnSearchChanged(string query)
+    {
+        searchQuery = query != null ? query.Trim() : "";
+        DisplaySavedSequences();
+    }
+
+    private void RefreshFilterChips()
+    {
+        StyleChip(filterAllButton,    homeFilter == HomeFilter.All);
+        StyleChip(filterRecentButton, homeFilter == HomeFilter.Recent);
+        StyleChip(filterIdleButton,   homeFilter == HomeFilter.Idle);
+    }
+
+    private static void StyleChip(Button chip, bool active)
+    {
+        if (chip == null) return;
+        Image bg = chip.GetComponent<Image>();
+        if (bg != null)
+            bg.color = active ? UITheme.WithAlpha(UITheme.Accent, 0.28f) : UITheme.Panel;
+        TMP_Text label = chip.GetComponentInChildren<TMP_Text>();
+        if (label != null)
+            label.color = active ? UITheme.AccentSoft : UITheme.TextSecondary;
+    }
+
+    /// <summary>Run a saved gesture straight from its Home-screen card.</summary>
+    public void RunSavedSequence(int index)
+    {
+        EditSavedSequence(index);
+        runningIndex = index;
+        if (unsavedChip != null) unsavedChip.SetActive(false);
+        PlaySequence();
     }
 
     public void EditSavedSequence(int index)
@@ -426,6 +577,10 @@ public class GestureSequenceUI : MonoBehaviour
 
         UpdatePreview();
         ShowConfig();
+
+        if (breadcrumbNameText != null) breadcrumbNameText.text = savedSeq.name;
+        if (unsavedChip != null) unsavedChip.SetActive(false);
+
         Debug.Log("[GestureSequenceUI] Loaded sequence: " + savedSeq.name + " with " + savedSeq.steps.Count + " steps");
     }
 
@@ -461,6 +616,7 @@ public class GestureSequenceUI : MonoBehaviour
             yield return new WaitForSeconds(0.5f);
         }
 
+        runningIndex = -1;
         Debug.Log("✓ Sequence complete!");
     }
 
@@ -627,6 +783,9 @@ public class GestureSequenceUI : MonoBehaviour
         editingIndex = -1;
         ClearSequence();
         ShowConfig();
+
+        if (breadcrumbNameText != null) breadcrumbNameText.text = "New gesture";
+        if (unsavedChip != null) unsavedChip.SetActive(false);
     }
 
     public void DeleteSequence(int index)
