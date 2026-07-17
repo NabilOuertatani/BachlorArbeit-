@@ -19,6 +19,19 @@ public class GestureDataManager : MonoBehaviour
     {
         public string name;
         public List<SavedStep> steps = new List<SavedStep>();
+
+        // ── Redesign metadata (additive — older files load fine without these) ──
+        public string id;            // stable GUID, used e.g. for the thumbnail file name
+        public string thumbnailPath; // PNG under Application.persistentDataPath/gestures/
+        public bool edited;          // true once the sequence has been re-saved after creation
+        public long savedAt;         // DateTime.UtcNow.Ticks of the last save
+
+        /// <summary>Assigns a GUID if this sequence doesn't have one yet.</summary>
+        public void EnsureId()
+        {
+            if (string.IsNullOrEmpty(id))
+                id = System.Guid.NewGuid().ToString("N");
+        }
     }
 
     [System.Serializable]
@@ -128,6 +141,8 @@ public class GestureDataManager : MonoBehaviour
     /// <summary>Add a single sequence (with steps and waypoints)</summary>
     public void AddSequence(SavedSequence sequence)
     {
+        sequence.EnsureId();
+        sequence.savedAt = System.DateTime.UtcNow.Ticks;
         savedSequences.Add(sequence);
         SaveSequences(savedSequences);
     }
@@ -137,6 +152,12 @@ public class GestureDataManager : MonoBehaviour
     {
         if (index >= 0 && index < savedSequences.Count)
         {
+            // Preserve the stable id of the sequence being replaced
+            if (string.IsNullOrEmpty(sequence.id))
+                sequence.id = savedSequences[index].id;
+            sequence.EnsureId();
+            sequence.edited = true;
+            sequence.savedAt = System.DateTime.UtcNow.Ticks;
             savedSequences[index] = sequence;
             SaveSequences(savedSequences);
         }
@@ -147,6 +168,13 @@ public class GestureDataManager : MonoBehaviour
     {
         if (index >= 0 && index < savedSequences.Count)
         {
+            // Remove the orphaned thumbnail PNG, if any
+            string thumb = savedSequences[index].thumbnailPath;
+            if (!string.IsNullOrEmpty(thumb) && File.Exists(thumb))
+            {
+                try { File.Delete(thumb); }
+                catch (System.Exception e) { Debug.LogWarning("[GestureDataManager] Could not delete thumbnail: " + e.Message); }
+            }
             savedSequences.RemoveAt(index);
             SaveSequences(savedSequences);
         }
