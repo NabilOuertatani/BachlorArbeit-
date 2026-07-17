@@ -40,17 +40,18 @@ public class ThumbnailCapture : MonoBehaviour
         if (captureCamera == null || string.IsNullOrEmpty(gestureId))
             return null;
 
-        // ── Frame the waypoint bounding box (fallback: area around origin) ──
-        Bounds bounds;
+        // ── Frame the whole floor so the full ground and the robot are visible;
+        //    waypoints are encapsulated too in case any lie off the floor.
+        //    Fallback when no floor renderer exists: waypoint bounds / origin. ──
+        Bounds bounds = default;
+        bool hasBounds = TryGetFloorBounds(out bounds);
         if (waypoints != null && waypoints.Count > 0)
         {
-            bounds = new Bounds(waypoints[0], Vector3.zero);
+            if (!hasBounds) { bounds = new Bounds(waypoints[0], Vector3.zero); hasBounds = true; }
             foreach (Vector3 p in waypoints) bounds.Encapsulate(p);
         }
-        else
-        {
+        if (!hasBounds)
             bounds = new Bounds(Vector3.zero, new Vector3(6f, 0f, 6f));
-        }
 
         float aspect = (float)Width / Height;
         float halfZ = bounds.extents.z + padding;
@@ -97,6 +98,22 @@ public class ThumbnailCapture : MonoBehaviour
         }
 
         return savedPath;
+    }
+
+    const int FloorLayer = 6;
+
+    /// <summary>Combined world bounds of every renderer on the floor layer.</summary>
+    static bool TryGetFloorBounds(out Bounds bounds)
+    {
+        bounds = default;
+        bool found = false;
+        foreach (Renderer r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+        {
+            if (r.gameObject.layer != FloorLayer) continue;
+            if (!found) { bounds = r.bounds; found = true; }
+            else bounds.Encapsulate(r.bounds);
+        }
+        return found;
     }
 
     /// <summary>
