@@ -216,8 +216,9 @@ public class GestureSequenceUI : MonoBehaviour
         RobotBridge.Instance.ClearWaypoints();
         Debug.Log("[GestureSequenceUI] Cleared MultiGoalManager waypoints");
 
-        // AUTO-SAVE: Save the sequence to JSON immediately after adding waypoints
-        SaveSequence();
+        // AUTO-SAVE: persist immediately, but stay on the Configure screen so
+        // the user can keep editing with the freshly added waypoints visible.
+        SaveSequenceInPlace();
     }
 
     private void AddStepToUI(string stepName)
@@ -274,10 +275,40 @@ public class GestureSequenceUI : MonoBehaviour
 
     public void SaveSequence()
     {
+        if (SaveSequenceCore() < 0) return;
+
+        ClearSequence();
+        ShowHome();
+        DisplaySavedSequences();
+    }
+
+    /// <summary>
+    /// Saves like SaveSequence() but keeps the Configure screen open so the
+    /// user can continue editing — used by the "Add points" auto-save.
+    /// </summary>
+    public void SaveSequenceInPlace()
+    {
+        int savedIndex = SaveSequenceCore();
+        if (savedIndex < 0) return;
+
+        // Keep editing the sequence we just saved so the next save updates it
+        // instead of creating a duplicate.
+        editingIndex = savedIndex;
+
+        if (breadcrumbNameText != null)
+            breadcrumbNameText.text = GestureDataManager.Instance.savedSequences[savedIndex].name;
+
+        DisplaySavedSequences();
+    }
+
+    /// <summary>Builds and persists the current steps. Returns the index of the
+    /// saved sequence in GestureDataManager, or -1 if nothing was saved.</summary>
+    private int SaveSequenceCore()
+    {
         if (sequenceSteps.Count == 0)
         {
             Debug.LogWarning("Cannot save empty sequence.");
-            return;
+            return -1;
         }
 
         // Auto-create GestureDataManager if missing
@@ -333,22 +364,21 @@ public class GestureSequenceUI : MonoBehaviour
         if (unsavedChip != null) unsavedChip.SetActive(false);
 
         // Save to persistent storage (with full waypoint data AND speeds!)
+        int savedIndex;
         if (editingIndex >= 0)
         {
-            if (GestureDataManager.Instance != null)
-                GestureDataManager.Instance.UpdateSequence(editingIndex, savedSeq);
+            GestureDataManager.Instance.UpdateSequence(editingIndex, savedSeq);
+            savedIndex = editingIndex;
             editingIndex = -1;
         }
         else
         {
-            if (GestureDataManager.Instance != null)
-                GestureDataManager.Instance.AddSequence(savedSeq);
+            GestureDataManager.Instance.AddSequence(savedSeq);
+            savedIndex = GestureDataManager.Instance.savedSequences.Count - 1;
         }
 
         Debug.Log("[GestureSequenceUI] Saved sequence with " + sequenceSteps.Count + " steps and waypoints with speeds");
-        ClearSequence();
-        ShowHome();
-        DisplaySavedSequences();
+        return savedIndex;
     }
 
     public void DisplaySavedSequences()
