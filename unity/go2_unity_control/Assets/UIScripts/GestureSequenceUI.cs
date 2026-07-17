@@ -770,7 +770,7 @@ public class GestureSequenceUI : MonoBehaviour
         {
             "raise hand"  => 1016,  // Hello (wave FR leg)
             "stand up"    => 1002,  // StandUp
-            "sit down"    => 1009,  // SitDown
+            "sit down"    => 1005,  // StandDown — slow damped ~2 s crouch (1009 Sit is a fixed fast trick)
             "jump"        => 1031,  // Jump
             "stretch"     => 1017,  // Stretch
             "dance"       => 1022,  // Dance1
@@ -785,7 +785,7 @@ public class GestureSequenceUI : MonoBehaviour
         {
             "raise hand"  => 3.0f,
             "stand up"    => 2.0f,
-            "sit down"    => 2.0f,
+            "sit down"    => 2.5f,  // StandDown motion is ~2 s; small margin before the next step
             "jump"        => 2.5f,
             "stretch"     => 2.0f,
             "dance"       => 3.0f,
