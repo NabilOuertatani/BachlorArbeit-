@@ -23,7 +23,7 @@ public class GestureCard : MonoBehaviour
     public Button runButton;
     public TMP_Text runButtonText;
     public Button cardButton;   // whole card → edit
-    public Button deleteButton; // "···" corner button → delete
+    public Button deleteButton; // "X" corner button → delete
 
     private Texture2D _loadedThumb;
 

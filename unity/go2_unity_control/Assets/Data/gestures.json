@@ -69,59 +69,6 @@
             "thumbnailPath": "/Users/nabilouertatani/Library/Application Support/DefaultCompany/go2_unity_control/gestures/74444921768d4bf88e90a2bc5a52bdbf.png",
             "edited": true,
             "savedAt": 639198918109687640
-        },
-        {
-            "name": "Sequence 3",
-            "steps": [
-                {
-                    "stepName": "Raise Hand"
-                },
-                {
-                    "stepName": "Sit down"
-                },
-                {
-                    "stepName": "Stand up"
-                },
-                {
-                    "stepName": "Move",
-                    "waypoints": [
-                        {
-                            "x": -3.5445785522460939,
-                            "y": 0.2499999850988388,
-                            "z": 0.9644732475280762,
-                            "speed": 0.4000000059604645
-                        },
-                        {
-                            "x": -8.716202735900879,
-                            "y": 0.2499999850988388,
-                            "z": 3.578111410140991,
-                            "speed": 0.800000011920929
-                        },
-                        {
-                            "x": -14.499598503112793,
-                            "y": 0.2499999850988388,
-                            "z": -0.42574405670166018,
-                            "speed": 0.5
-                        },
-                        {
-                            "x": -15.278087615966797,
-                            "y": 0.2499999850988388,
-                            "z": 8.805388450622559,
-                            "speed": 0.20000000298023225
-                        },
-                        {
-                            "x": -8.994301795959473,
-                            "y": 0.2499999850988388,
-                            "z": 7.137109756469727,
-                            "speed": 0.4000000059604645
-                        }
-                    ]
-                }
-            ],
-            "id": "f2b8f0b207ef4b3abab30508313a80e7",
-            "thumbnailPath": "/Users/nabilouertatani/Library/Application Support/DefaultCompany/go2_unity_control/gestures/f2b8f0b207ef4b3abab30508313a80e7.png",
-            "edited": true,
-            "savedAt": 639198934851004940
         }
     ]
 }

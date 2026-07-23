@@ -264,7 +264,7 @@ public static class RedesignBuilder
                                TextAlignmentOptions.Center);
         chipText.characterSpacing = 3;
 
-        // "···" menu (delete)
+        // "X" delete button
         var menu = NewUI("MenuButton", root.transform);
         Point(menu, new Vector2(1, 1), new Vector2(-8, -6), new Vector2(32, 28), pivot: new Vector2(1, 1));
         var menuBg = AddImg(menu, null, new Color(1, 1, 1, 0f), Image.Type.Simple, raycast: true);
@@ -272,7 +272,7 @@ public static class RedesignBuilder
         menuBtn.targetGraphic = menuBg;
         var menuLabel = NewUI("Label", menu.transform);
         Stretch(menuLabel, Vector2.zero, Vector2.zero);
-        AddText(menuLabel, "···", sansFont, 16, UITheme.TextMuted, TextAlignmentOptions.Center);
+        AddText(menuLabel, "X", sansFont, 16, UITheme.TextMuted, TextAlignmentOptions.Center);
 
         // Thumbnail area
         var thumb = NewUI("Thumb", root.transform);

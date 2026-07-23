@@ -49,6 +49,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets/TutorialInfo/Scripts/Editor/ReadmeEditor.cs" />
+    <Compile Include="Assets/Editor/RedesignTools.cs" />
+    <Compile Include="Assets/Editor/RedesignShots.cs" />
+    <Compile Include="Assets/Editor/RedesignBuilder.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
